@@ -1,4 +1,4 @@
-setwd("/Users/seanhackett/Desktop/RabinowitzLab/MAVENdata_prelimchemo/PeakSearch/")
+setwd("/Users/seanhackett/Desktop/RabinowitzLab/IsoPeak/")
 
 source(file = "peakLib.R")
 
@@ -44,6 +44,8 @@ removerow <- c(10, 12, 25)
 
 knownRT <- knownRT[-removerow,]
 
+#write.table(knownRT, file = "knownRTchemForm.csv", sep = ",", col.names = TRUE, row.names = FALSE)
+
 MzRT <- NULL
 NlabMzRT <- NULL
 
@@ -86,11 +88,60 @@ for(i in 1:length(negions[,1])){
 		isoCombs <- rbind(isoCombs, data.frame(adduct = negions[i,1], nmol = negions$nmol[i], charge = negions$charge[i], weightprob = add.weight$prob[combos[k,1]]*rem.weight$prob[combos[k,2]], weightch = add.weight$mass[combos[k,1]] - rem.weight$mass[combos[k,2]]))}
 		Unadd <- rbind(Unadd, isoCombs[isoCombs$weightprob > 0.001,])
 		}}}	
+
+Nadd <- NULL
+
+for(i in 1:length(negions[,1])){
+	
+	addform <- as.character(negions$addForm[i])
+	remform <- as.character(negions$remove[i])
+	
+	add.weight <- if(!is.na(addform)){chemweight(NlabFreq, addform, 1, 1)}else{add.weight <- NA}
+	rem.weight <- if(!is.na(remform)){chemweight(NlabFreq, remform, 0, 1)}else{rem.weight <- NA}
+	
+	if(is.na(rem.weight)){
+		Nadd <- rbind(Nadd, data.frame(adduct = negions[i,1], nmol = negions$nmol[i], charge = negions$charge[i], weightprob = add.weight$prob, weightch = add.weight$mass))
+		next}
+	if(is.na(add.weight)){
+		Nadd <- rbind(Nadd, data.frame(adduct = negions[i,1], nmol = negions$nmol[i], charge = negions$charge[i], weightprob = rem.weight$prob, weightch = ((rem.weight$mass*-1)+elFreq[1,2])))
+		next}
+	else{
+	combos <- expand.grid(1:length(add.weight[,1]), 1:length(rem.weight[,1]))
+	if(length(combos[,1]) == 1){Nadd <- rbind(Nadd, data.frame(adduct = negions[i,1], nmol = negions$nmol[i], charge = negions$charge[i], weightprob = add.weight$prob*rem.weight$prob, weightch = add.weight$mass-rem.weight$mass))}else{
+		isoCombs <- NULL
+		for(k in 1:length(combos[,1])){
+		isoCombs <- rbind(isoCombs, data.frame(adduct = negions[i,1], nmol = negions$nmol[i], charge = negions$charge[i], weightprob = add.weight$prob[combos[k,1]]*rem.weight$prob[combos[k,2]], weightch = add.weight$mass[combos[k,1]] - rem.weight$mass[combos[k,2]]))}
+		Nadd <- rbind(Nadd, isoCombs[isoCombs$weightprob > 0.001,])
+		}}}
+
+
+###Combine N and unlabeled adduct libraries
+
+adds <- unique(Nadd$adduct)
 		
+combinedAdds <- NULL
+
+for(i in 1:length(adds)){
+sublist <- Unadd[Unadd$adduct %in% adds[i],]
+nsublist <- Nadd[Nadd$adduct %in% adds[i],]
+
+jointmass <- union(sublist$weightch, nsublist$weightch)
+if(length(jointmass[!(jointmass %in% sublist$weightch)]) != 0){
+sublist  <- rbind(sublist, data.frame(adduct = sublist$adduct[1], nmol = sublist$nmol[1], charge = sublist$charge[1], weightch = jointmass[!(jointmass %in% sublist$weightch)], weightprob = 0)) 
+sublist <- sublist[order(sublist$weightch),]
+	}
+	
+if(length(jointmass[!(jointmass %in% nsublist$weightch)]) != 0){
+nsublist  <- rbind(nsublist, data.frame(adduct = nsublist$adduct[1], nmol = nsublist$nmol[1], charge = nsublist$charge[1], weightch = jointmass[!(jointmass %in% nsublist$weightch)], weightprob = 0))  
+nsublist <- nsublist[order(nsublist$weightch),]
+	}	
+
+combinedAdds <- rbind(combinedAdds, data.frame(adduct = sublist$adduct, nmol = sublist$nmol, charge = sublist$charge, weightch = sublist$weightch, uLabp = sublist$weightprob, nLabp = nsublist$weightprob))}
+
 		
 ### Only interested in (-) adducts because exactive generates (-) ions ###
 
-#save(Unadd, file = "negAdducts.R")
+#save(combinedAdds, file = "negAdducts.R")
 
 #save(MzRT, NlabMzRT, file = "knownMzRT.R")
 

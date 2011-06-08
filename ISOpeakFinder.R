@@ -6,7 +6,7 @@ options(digits = 13)
 CETUSUSED <- FALSE
 
 if(CETUSUSED == TRUE){setwd("/Genomics/grid/users/shackett/ISOpeakFinder/")}else{
-setwd("/Users/seanhackett/Desktop/RabinowitzLab/ISOpeakFinder/")}
+setwd("/Users/seanhackett/Desktop/RabinowitzLab/IsoPeak/")}
 
 load("knownMzRTre.R")
 source("pfLibrary.R")
@@ -60,6 +60,8 @@ nsublist <- nsublist[order(nsublist$mass),]
 
 combinedProbs <- rbind(combinedProbs, data.frame(compound = sublist$compound, mass = sublist$mass, RT = sublist$RT, uLabp = sublist$prob, nLabp = nsublist$prob))}
 
+#save(combinedProbs, file = "knownProbs.R")
+
 probMat <- matrix(data =NA, ncol = length(sampleclass), nrow = length(combinedProbs[,1]))
 for(i in 1:length(sampleclass)){
 if(sampleclass[i] == "P"){probMat[,i] <- combinedProbs$uLabp}else{probMat[,i] <- combinedProbs$nLabp}
@@ -81,7 +83,7 @@ for(i in 1:length(compounds)){
 ######### Setup ####################
 
 # Establish annealing schedule # must be a multiple of 20
-nanneal <- 100
+nanneal <- 20
 anneals <- rep(NA, times = nanneal)
 for(j in 1:nanneal){
 	anneals[j] = 1*j^-0.05
@@ -140,6 +142,7 @@ peakSDlikE <- rep(NA, times = nhet)
 SDcoefO <- rep(1, times = nhet)
 SDcoefE <- rep(NA, times = nhet)
 
+save(valS, HETbase, RTpos, samples, nanneal, file = "PeakFparams.R")
 
 for(j in 1:nanneal){
 
@@ -178,7 +181,7 @@ colnames(RTalt) <- RTpos
 
 ### Determine SD of a peak given its intensity - Heteroscedasticity ###
 
-SDcoefMat <- matrix(data = hetR[1]:hetR[2], ncol = nhet+1, nrow = nhet)
+SDcoefMat <- matrix(data = (hetR[1]:hetR[2])*SDcoefO, ncol = nhet+1, nrow = nhet)
 diag(SDcoefMat) <- log(HETbase^(hetR[1]:hetR[2])*SDcoefE, base = HETbase)
 
 SDlmMat <- matrix(data = NA, ncol = nhet+1, nrow = 4)

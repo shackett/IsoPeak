@@ -1,5 +1,11 @@
+setwd("/Users/seanhackett/Desktop/RabinowitzLab/IsoPeak/")
 
 load("SpectrumScale.R")
+load("PeakFparams.R")
+
+library(gplots)
+
+nanneal <- 500
 
 #### Summary Plotz
 
@@ -47,6 +53,20 @@ expSDpoly <- HETbase^SDpoly
 
 if(j == 1){plot(expSDpoly ~ expHetRange, type = "l", col = annealCol[1])}else{lines(expSDpoly ~ expHetRange, col = annealCol[j])}
 }
+
+#for just the Coefficient of variation
+
+for(j in 1:nanneal){
+Hetpoints <- log(HETbase^Hetrange*SDtrack[j,], base = HETbase)
+SDcoefs <- summary(lm(Hetpoints ~ Hetrange + I(Hetrange ^2) + I(Hetrange ^3)))$coef[,1]
+SDpoly <- SDcoefs[1] + SDcoefs[2]*Hetrange + SDcoefs[3]*Hetrange^2 + SDcoefs[4]*Hetrange^3
+expSDpoly <- HETbase^SDpoly	
+	
+#if(j == 1){plot(SDpoly ~ Hetrange, type = "l", col = annealCol[1])}else{lines(SDpoly ~ Hetrange, col = annealCol[j])}
+
+if(j == 1){plot(expSDpoly/expHetRange ~ expHetRange, type = "l", col = annealCol[1], ylim = c(0,3))}else{lines(expSDpoly/expHetRange ~ expHetRange, col = annealCol[j])}
+}
+
 	
 plot(MZpoints)
 

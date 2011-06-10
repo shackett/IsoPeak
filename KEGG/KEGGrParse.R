@@ -125,3 +125,20 @@ KEGGcombo <- rbind(KEGGcombo, data.frame(compound = sublist$compound, mass = sub
 save(KEGGcombo, exactUn, exactN, file = "KEGG/KEGGcombo.R")
 
 
+
+setwd("/Users/seanhackett/Desktop/RabinowitzLab/IsoPeak/")
+
+load("KEGG/KEGGcombo.R")
+
+KEGGcompounds <- unique(KEGGcombo$compound)
+coToisoKEGGr <- matrix(data = NA, nrow = length(KEGGcombo[,1]), ncol = length(KEGGcompounds))
+colnames(coToisoKEGGr) <- KEGGcompounds
+
+for(i in 1:length(KEGGcompounds)){
+	coToisoKEGGr[,i] <- coToisoKEGGr[,1] %in% KEGGcompounds[i]
+	}
+
+save(coToisoKEGGr, file = "coToisoKEGGr.R")
+
+
+

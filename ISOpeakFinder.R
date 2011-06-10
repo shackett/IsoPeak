@@ -1,18 +1,19 @@
 #qsub -l 1day -cwd -sync n Rscript //Genomics/grid/users/shackett/ISOpeakFinder/ISOpeakFinder.R
 
+#qsub -l long -cwd -sync n Rscript //Genomics/grid/users/shackett/ISOpeakFinder/ISOpeakFinder.R
 
 options(digits = 13)
 
-CETUSUSED <- FALSE
+CETUSUSED <- TRUE
 
 if(CETUSUSED == TRUE){setwd("/Genomics/grid/users/shackett/ISOpeakFinder/")}else{
 setwd("/Users/seanhackett/Desktop/RabinowitzLab/IsoPeak/")}
 
-load("knownMzRTre.R")
+load("Saved_Filez/knownMzRTre.R")
 source("pfLibrary.R")
 
 
-allPeaks <- read.table("4.23.11aligned.csv", sep = ",", header = TRUE)
+allPeaks <- read.table("Saved_Filez/4.23.11aligned.csv", sep = ",", header = TRUE)
 
 #Constants
 isoCov <- 0.7
@@ -75,15 +76,12 @@ for(i in 1:length(compounds)){
 	}
 	
 
-
-
-
 #### Simulated Annealing ####
 
 ######### Setup ####################
 
 # Establish annealing schedule # must be a multiple of 20
-nanneal <- 20
+nanneal <- 500
 anneals <- rep(NA, times = nanneal)
 for(j in 1:nanneal){
 	anneals[j] = 1*j^-0.05
@@ -111,9 +109,8 @@ RTvals = valS$medRt
 MZvals = valS$medMz
 
 RTn = 20
-RTpos <- range(RTvals)[1] + c(0:(RTn-1))*(diff(range(RTvals))/(RTn-1))
-RTinc <- (diff(range(RTvals))/(RTn-1))/2
-
+RTpos <- sort(RTvals)[c(1, round(((seq(from = 1, to = (2*(RTn-2)-1), by = 2)*length(RTvals)/((2*(RTn-2)))))), length(RTvals))]
+	
 RTtrack <- matrix(NA, ncol = RTn, nrow = nanneal)
 MZoffsetrack  <- rep(NA, times = nanneal)
 RTliktrack <- matrix(NA, ncol = RTn, nrow = nanneal)
@@ -142,7 +139,7 @@ peakSDlikE <- rep(NA, times = nhet)
 SDcoefO <- rep(1, times = nhet)
 SDcoefE <- rep(NA, times = nhet)
 
-save(valS, HETbase, RTpos, samples, nanneal, file = "PeakFparams.R")
+#save(valS, HETbase, RTpos, samples, nanneal, file = "PeakFparams.R")
 
 for(j in 1:nanneal){
 
@@ -166,22 +163,27 @@ for(i in 1:(RTn+1)){
 RTpoints <- RTpos*RTcoefsMat[,i]
 RTcoefs <- summary(lm(RTpoints ~ RTpos + I(RTpos^2) + I(RTpos^3)))$coef[,1]
 RTeval[,i] <- RTcoefs[1] + RTcoefs[2]*RTvals + RTcoefs[3]*RTvals^2 + RTcoefs[4]*RTvals^3
-	
+
 	}	
 
 ### NULL looks at points around RTpos for each comparison ###
 ### ALT looks at points around RTpos*diag(RTcoefsMat)
 
 RTalt <- matrix(data = NA, ncol = RTn, nrow = length(RTvals))
+RTinc <- rep(NA, times = RTn)
 
-for(i in 1:length(RTpos)){
-	RTalt[,i] <- ifelse(abs(RTvals - RTpos[i]*diag(RTcoefsMat)[i]) < RTinc + 0.2, TRUE, FALSE)
+for(i in 1:RTn){
+
+if(i == 1){RTinc[i] <- (RTpos[i+1]-RTpos[i])/2}else if(i == RTn){RTinc[i] <- (RTpos[i]-RTpos[i-1])/2}else{
+RTinc[i] <- max((RTpos[i+1]-RTpos[i])/2, (RTpos[i]-RTpos[i-1])/2)}
+
+RTalt[,i] <- ifelse(abs(RTeval[,i] - RTpos[i]*diag(RTcoefsMat)[i]) < RTinc[i] + 0.5, TRUE, FALSE)
 	}
 colnames(RTalt) <- RTpos			
 
 ### Determine SD of a peak given its intensity - Heteroscedasticity ###
 
-SDcoefMat <- matrix(data = (hetR[1]:hetR[2])*SDcoefO, ncol = nhet+1, nrow = nhet)
+SDcoefMat <- matrix(data = log((HETbase^(hetR[1]:hetR[2]))*SDcoefO, base = HETbase), ncol = nhet+1, nrow = nhet)
 diag(SDcoefMat) <- log(HETbase^(hetR[1]:hetR[2])*SDcoefE, base = HETbase)
 
 SDlmMat <- matrix(data = NA, ncol = nhet+1, nrow = 4)
@@ -213,8 +215,8 @@ nstd <- length(combinedProbs[,1])
 
 #compare against all standards - combinedProbs$mass
 
-MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefE, mean = 0, sd = 1), base = 2)
-RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 0.5), base = 2)
+MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefE, mean = 0, sd = 2), base = 2)
+RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 1), base = 2)
 SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
 posL <- MZe + RTe + SIZe
 
@@ -253,8 +255,8 @@ npeaks <- length(pRT)
 		
 #compare against all standards - combinedProbs$mass
 	
-MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = peaks) + MZcoefO, mean = 0, sd = 3), base = 2)
-RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 0.5), base = 2)
+MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = peaks) + MZcoefO, mean = 0, sd = 2), base = 2)
+RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 1), base = 2)
 SIZe <- t(log(probMat %*% t(pSize), base = 2))
 posL <- MZe + RTe + SIZe
 
@@ -291,8 +293,8 @@ pRT = RTeval[,RTn+1]
 
 #compare against all standards - combinedProbs$mass
 
-MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefO, mean = 0, sd = 3), base = 2)
-RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 0.5), base = 2)
+MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefO, mean = 0, sd = 2), base = 2)
+RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 1), base = 2)
 SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
 posL <- MZe + RTe + SIZe
 

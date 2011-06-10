@@ -233,21 +233,41 @@ MUcolz[,c(1:nsamples)[replicates == i]] <- apply(MUcolz[,c(1:nsamples)[replicate
 sharedPeaks <- names((apply(table(stacker[!is.na(stacker[,1]),]), 1, sum) != 1)[(apply(table(stacker[!is.na(stacker[,1]),]), 1, sum) != 1) == TRUE])
 sharedPeakPairs <- NULL
 sharedPnumVec <- NULL
+sharedPeakPairsFULL <- NULL
 for(i in 1:length(sharedPeaks)){
 for(j in 2:sum((stacker$peaks[!is.na(stacker$peaks)] %in% sharedPeaks[i]) == TRUE)){
 	
-combos <- combn(c(1:npeakISO)[stacker$peaks[!is.na(stacker$peaks)] %in% sharedPeaks[i]], j)
-tMat <- matrix(data = 0, ncol = npeakISO, nrow = length(combos[1,]))		
+table(stacker)[row.names(table(stacker)) == sharedPeaks[i],]
+	
+combos <- combn(c(1:nuMiso)[table(stacker)[row.names(table(stacker)) == sharedPeaks[i],] == 1], j)
+tMat <- matrix(data = 0, ncol = nuMiso, nrow = length(combos[1,]))
+combosFULL <- combn(c(1:npeakISO)[stacker$peaks[!is.na(stacker$peaks)] %in% sharedPeaks[i]], j)
+tMatFULL <- matrix(data = 0, ncol = npeakISO, nrow = length(combos[1,]))		
+		
 	
 for(k in 1:length(combos[1,])){	
-tMat[k,combos[,1]] <- (1/j)	}
+tMat[k,combos[,1]] <- (1/j)	
+tMatFULL[k, combosFULL[,1]] <- 1}
 }
 sharedPeakPairs <- rbind(sharedPeakPairs, tMat)	
 sharedPnumVec <- c(sharedPnumVec, rep(sharedPeaks[i], times = length(tMat[,1])))
+sharedPeakPairsFULL <- rbind(sharedPeakPairsFULL, tMatFULL)
 }
+ 	
+Tcombos <- (as.matrix(rTemp) %*% t(sharedPeakPairs)) == matrix(as.numeric(sharedPnumVec), nrow = length(rTemp[,1]), ncol = length(sharedPeakPairs[,1]), byrow = TRUE)
+
+Tcombos <- ifelse(Tcombos, 1, 0)
+
+for(k in 1:nsamples){
 	
+LIKadjust <- log(exp((Tcombos %*% sharedPeakPairsFULL)*EVAL[,colnames(EVAL) == k]) / (Tcombos*(exp(EVAL[,colnames(EVAL) == k]) %*% t(sharedPeakPairsFULL)))%*% sharedPeakPairsFULL)
+
+EVAL[,colnames(EVAL) == k] <- EVAL[,colnames(EVAL) == k] + ifelse(abs(LIKadjust) == Inf, 1, LIKadjust)
+
+	}
 
 
+ 
 
 REPMOD <- USED*5
 EVAL <- (log(gausD(PMAT, matrix(MUcolz, ncol = nsamples*npeakISO, nrow = nperms, byrow = FALSE)*USED*PPROB, sdPMAT), base = 10) + POSLMAT)*USED+ REPMOD

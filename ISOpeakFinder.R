@@ -81,7 +81,7 @@ for(i in 1:length(compounds)){
 ######### Setup ####################
 
 # Establish annealing schedule # must be a multiple of 20
-nanneal <- 500
+nanneal <- 20
 anneals <- rep(NA, times = nanneal)
 for(j in 1:nanneal){
 	anneals[j] = 1*j^-0.05
@@ -108,9 +108,9 @@ combined <- combinedProbs
 RTvals = valS$medRt
 MZvals = valS$medMz
 
-RTn = 20
-RTpos <- sort(RTvals)[c(1, round(((seq(from = 1, to = (2*(RTn-2)-1), by = 2)*length(RTvals)/((2*(RTn-2)))))), length(RTvals))]
-	
+RTn = 400
+RTpos <- range(RTvals)[1] + c(0:(RTn-1))*(diff(range(RTvals))/(RTn-1))
+
 RTtrack <- matrix(NA, ncol = RTn, nrow = nanneal)
 MZoffsetrack  <- rep(NA, times = nanneal)
 RTliktrack <- matrix(NA, ncol = RTn, nrow = nanneal)
@@ -139,19 +139,32 @@ peakSDlikE <- rep(NA, times = nhet)
 SDcoefO <- rep(1, times = nhet)
 SDcoefE <- rep(NA, times = nhet)
 
+
+RT.SDliktrack <- rep(NA, times = nanneal)
+RT.SDtrack <- rep(NA, times = nanneal)
+RT.peakSDlik <- NA
+RT.peakSDlikE <- NA
+RT.SDcoefO <- 0.1
+RT.SDcoefE <- NA
+
+
 #save(valS, HETbase, RTpos, samples, nanneal, file = "PeakFparams.R")
 
 for(j in 1:nanneal){
 
 #ppm offset - systematic difference between peaks and standards
-if(j == 1){MZcoefE <- 0; RTcoefsE <- rep(1, times = RTn); SDcoefE <- rep(1, times = nhet)
+if(j == 1){MZcoefE <- MZcoefO; RTcoefsE <- RTcoefsO; SDcoefE <- SDcoefO; RT.SDcoefE <- RT.SDcoefO
+	
 	}else{
 MZcoefE <- rnorm(1, MZcoefO, 2*annealvar[j])
 	
 RTcoefsE <- (rnorm(n = length(RTcoefsO), mean = RTcoefsO, sd = 0.1*annealvar[j]) + rnorm(n = length(RTcoefsO), mean = 1, sd = 0.1*annealvar[j]))/2
 
 SDcoefE <- SDcoefO*runif(nhet, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
+
+RT.SDcoefE <- RT.SDcoefO*runif(1, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
 }
+
 #C1-C20 are alternative H, C21 is the null for LRT
 RTcoefsMat <- matrix(data = RTcoefsO, ncol = RTn+1, nrow = RTn)
 diag(RTcoefsMat) <- RTcoefsE
@@ -165,22 +178,7 @@ RTcoefs <- summary(lm(RTpoints ~ RTpos + I(RTpos^2) + I(RTpos^3)))$coef[,1]
 RTeval[,i] <- RTcoefs[1] + RTcoefs[2]*RTvals + RTcoefs[3]*RTvals^2 + RTcoefs[4]*RTvals^3
 
 	}	
-
-### NULL looks at points around RTpos for each comparison ###
-### ALT looks at points around RTpos*diag(RTcoefsMat)
-
-RTalt <- matrix(data = NA, ncol = RTn, nrow = length(RTvals))
-RTinc <- rep(NA, times = RTn)
-
-for(i in 1:RTn){
-
-if(i == 1){RTinc[i] <- (RTpos[i+1]-RTpos[i])/2}else if(i == RTn){RTinc[i] <- (RTpos[i]-RTpos[i-1])/2}else{
-RTinc[i] <- max((RTpos[i+1]-RTpos[i])/2, (RTpos[i]-RTpos[i-1])/2)}
-
-RTalt[,i] <- ifelse(abs(RTeval[,i] - RTpos[i]*diag(RTcoefsMat)[i]) < RTinc[i] + 0.5, TRUE, FALSE)
-	}
-colnames(RTalt) <- RTpos			
-
+		
 ### Determine SD of a peak given its intensity - Heteroscedasticity ###
 
 SDcoefMat <- matrix(data = log((HETbase^(hetR[1]:hetR[2]))*SDcoefO, base = HETbase), ncol = nhet+1, nrow = nhet)
@@ -205,8 +203,6 @@ SDlmMat[,i] <- summary(lm(SDcoefMat[,i] ~ SDpoints + I(SDpoints^2) + I(SDpoints^
 	
 ###### M/Z eval #######	
 
-### all x all
-
 pMZ = MZvals
 pRT = RTeval[,RTn+1]
 
@@ -216,7 +212,7 @@ nstd <- length(combinedProbs[,1])
 #compare against all standards - combinedProbs$mass
 
 MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefE, mean = 0, sd = 2), base = 2)
-RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 1), base = 2)
+RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = pRT*RT.SDcoefO), base = 2)
 SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
 posL <- MZe + RTe + SIZe
 
@@ -235,29 +231,36 @@ LIKmat[LIKform[z,1],LIKform[z,3]] <- LIKform[z,4]}
 
 MZlikE <- sum(apply(LIKmat, 1, max))/npeaks
 
-##### RT eval ########
+##### sd(RT) #######
 
-### comparing fits around RT region x all peaks ###
+MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefO, mean = 0, sd = 2), base = 2)
+RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = pRT*RT.SDcoefE), base = 2)
+SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
+posL <- MZe + RTe + SIZe
+
+#LIKeval <- cbind(matrix(MZe + RTe + SIZe, ncol = length(combinedProbs[,1]), nrow = length(peakpos), byrow = FALSE), -50)
+
+peakLIK <- lapply(c(1:length(compounds)), GaussianLik, coToiso, posL, peaksizeMat, probMat, npeaks, nhet+1, SDlmMat, HETbase)
+
+LIKform <- NULL
+for (znum in 1:length(peakLIK)){
+LIKform <- rbind(LIKform, data.frame(peakLIK[znum[1]]))	}
+
+LIKmat <- matrix(0, ncol = nstd, nrow = npeaks)
+
+for(z in 1:length(LIKform[,1])){
+LIKmat[LIKform[z,1],LIKform[z,3]] <- LIKform[z,4]}
+
+RT.peakSDlikE <- sum(apply(LIKmat, 1, max))/npeaks
+
+
+##### RT scaling ########
 
 for(i in 1:RTn){
-
-peakpos <- c(1:length(RTalt[,1]))[RTalt[,i]]
-
-if(length(peakpos) == 0){RTlikE[i] <- -50; next}
-
-
-peaks = MZvals[peakpos]	
-pRT = RTeval[peakpos,i]
-pSize = peaksizeMat[peakpos,]
-
-npeaks <- length(pRT)
-
-		
-#compare against all standards - combinedProbs$mass
 	
-MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = peaks) + MZcoefO, mean = 0, sd = 2), base = 2)
-RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 1), base = 2)
-SIZe <- t(log(probMat %*% t(pSize), base = 2))
+MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = MZvals) + MZcoefO, mean = 0, sd = 2), base = 2)
+RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = RTeval[,i]), mean = 0, sd = pRT*RT.SDcoefO), base = 2)
+SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
 posL <- MZe + RTe + SIZe
 
 #LIKeval <- cbind(matrix(MZe + RTe + SIZe, ncol = length(combinedProbs[,1]), nrow = length(peakpos), byrow = FALSE), -50)
@@ -315,9 +318,6 @@ peakSDlikE[i] <- sum(apply(LIKmat, 1, max))/npeaks
 }
 
 
-
-
-
 ######## Determine acceptance prob - alpha #####
 
 if(j == 1){
@@ -327,13 +327,17 @@ RTcoefsO <- RTcoefsE
 RTlik <- RTlikE
 SDcoefO <- SDcoefE
 peakSDlik <- peakSDlikE
-		
+RT.SDcoefO <- RT.SDcoefE
+RT.peakSDlik <- RT.peakSDlikE
+
 RTtrack[j,] <- RTcoefsO
 MZoffsetrack[j]  <- MZcoefO
 SDtrack[j,] <- SDcoefO
 RTliktrack[j,] <- RTlikE
 MZliktrack[j]  <- MZlikE
 SDliktrack[j,] <- peakSDlikE
+RT.SDtrack[j] <- RT.SDcoefE
+RT.SDliktrack[j] <- RT.peakSDlikE
 
 next
 }
@@ -352,6 +356,23 @@ MZcoefO <- MZcoefO
 MZlik <- MZlik	
 MZoffsetrack[j]  <- MZcoefO
 MZliktrack[j]  <- MZlik}
+
+
+RT.SDalpha = 10^(RT.peakSDlikE - RT.peakSDlik)
+if(RT.SDalpha > 1){
+RT.SDaccept <- TRUE}else{if(abs(1-RT.SDalpha) < runif(1, 0, 1)*anneals[j]){RT.SDaccept <- TRUE} else {RT.SDaccept <- FALSE}}
+
+if(RT.SDaccept == TRUE){
+RT.SDcoefO <- RT.SDcoefE
+RT.peakSDlik <- RT.peakSDlikE
+RT.SDtrack[j] <- RT.SDcoefE
+RT.SDliktrack[j] <- RT.peakSDlikE
+}else{
+RT.SDcoefO <- RT.SDcoefO
+RT.peakSDlik <- RT.peakSDlik
+RT.SDtrack[j] <- RT.SDcoefO
+RT.SDliktrack[j] <- RT.peakSDlik}
+
 
 RTalpha = 10^(RTlikE - RTlik)	
 RTaccept = rep(NA, times = RTn)

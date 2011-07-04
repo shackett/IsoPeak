@@ -51,7 +51,7 @@ for(i in 1:length(compounds)){
 	}
 
 ##################laod MZ offset, RT scaling and SD scaling from analysis of compounds ###################
-load("Saved_Filez/SpectrumScale.R")
+load("SpectrumScale.R")
 
 nanneal <- j
 
@@ -103,8 +103,8 @@ nstd <- length(combinedProbs[,1])
 
 #compare against all standards - combinedProbs$mass
 
-MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZoffsetrack[nanneal], mean = 0, sd = 3), base = 2)
-RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 0.5), base = 2)
+MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZoffsetrack[nanneal], mean = 0, sd = 4), base = 2)
+RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = pRT*RT.SDtrack[nanneal]), base = 2)
 SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
 posL <- MZe + RTe + SIZe
 
@@ -153,7 +153,7 @@ definedP <- ifelse(is.na(levgrid), 0, 1)
 Nf <- combinedProbs$uLabp[coToiso[,com]]
 Pf <- combinedProbs$nLabp[coToiso[,com]]
 
-
+#######
 
 validP <- levgrid[apply(definedP, 1, validPerms, Nf, Pf, isoCov),]
 
@@ -164,9 +164,37 @@ colZ <- stacker[!is.na(stacker)[,1],]
 probMatsub <- probMat[coToiso[,com],]
 
 
+
+###### require that peaks in the same permutation have matching RT w/ sd = 0.2 min.
+
+RT.weights <- apply(cbind(Nf, Pf), 1, mean)
+
+colZ.RT <- pRT[colZ[,1]]
+
+RTgrid <- validP
+
+for(i in 1:length(colZ[,1])){
+	RTgrid[RTgrid == colZ[i,1]] <- colZ.RT[i]
+	}
+RTgrid[is.na(RTgrid)] <- 0	
+	
+
+permRTs <- apply(RTgrid*matrix(RT.weights, ncol = length(validP[1,]), nrow = length(validP[,1]), byrow = TRUE), 1, sum, na.rm = TRUE)/ifelse(is.na(validP), 0, 1)%*%RT.weights
+
+logL.RT <- log(dGuas(x=RTgrid, mu = matrix(permRTs, ncol = length(validP[1,]), nrow = length(validP[,1])), sd = matrix(0.1, ncol = length(validP[1,]), nrow = length(validP[,1]))), base = 2) * ifelse(is.na(validP), 0, 1)
+logL.RT[is.nan(logL.RT)] <- NA
+logL.RT.perm <- apply(logL.RT, 1, sum, na.rm = TRUE)
+
+######
+
+validRT <- validP[logL.RT.perm > 0,]
+
+
+
+
 nuMiso <- length(levgrid[1,])
 npeakISO <- length(colZ[,1]) 
-nperms <- length(validP[,1])
+nperms <- length(validRT[,1])
 
 indies <- c(1:nsamples)
 
@@ -191,10 +219,10 @@ for(i in 1:length(colZ[,1])){
 POSLMAT <- matrix(rep(posLinfo, each = nsamples), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE) 
 
 
-#convert validP to peak-sample x nperm format using colZ
+#convert validRT to peak-sample x nperm format using colZ
 
 isoRep <- table(colZ[,2])*nsamples
-gridEXP <- validP[,as.numeric(rep(names(isoRep), times = isoRep))]
+gridEXP <- validRT[,as.numeric(rep(names(isoRep), times = isoRep))]
 gridCOM <- matrix(data = (-1*rep(colZ[,1], each = nsamples)), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 
 USED <- ifelse(gridEXP+gridCOM == 0 & !is.na(gridEXP*gridCOM), 1, 0)
@@ -229,8 +257,16 @@ for(i in 1:nuniqueSamp){
 MUcolz[,c(1:nsamples)[replicates == i]] <- apply(MUcolz[,c(1:nsamples)[replicates == i]], 1, mean)
 }}
 
-#identify peaks that fit with both isotopes
+##################
+
+REPMOD <- USED*5
+EVAL <- (log(gausD(PMAT, matrix(MUcolz, ncol = nsamples*npeakISO, nrow = nperms, byrow = FALSE)*USED*PPROB, sdPMAT), base = 10) + POSLMAT)*USED+ REPMOD
+
+
+################# identify peaks that fit with both isotopes ################
+
 sharedPeaks <- names((apply(table(stacker[!is.na(stacker[,1]),]), 1, sum) != 1)[(apply(table(stacker[!is.na(stacker[,1]),]), 1, sum) != 1) == TRUE])
+if(length(sharedPeaks) > 0){
 sharedPeakPairs <- NULL
 sharedPnumVec <- NULL
 sharedPeakPairsFULL <- NULL
@@ -252,8 +288,11 @@ tMatFULL[k, combosFULL[,1]] <- 1}
 sharedPeakPairs <- rbind(sharedPeakPairs, tMat)	
 sharedPnumVec <- c(sharedPnumVec, rep(sharedPeaks[i], times = length(tMat[,1])))
 sharedPeakPairsFULL <- rbind(sharedPeakPairsFULL, tMatFULL)
-}
- 	
+}}
+
+rTemp <- validRT
+rTemp[is.na(rTemp)] <- 0
+
 Tcombos <- (as.matrix(rTemp) %*% t(sharedPeakPairs)) == matrix(as.numeric(sharedPnumVec), nrow = length(rTemp[,1]), ncol = length(sharedPeakPairs[,1]), byrow = TRUE)
 
 Tcombos <- ifelse(Tcombos, 1, 0)
@@ -266,10 +305,7 @@ EVAL[,colnames(EVAL) == k] <- EVAL[,colnames(EVAL) == k] + ifelse(abs(LIKadjust)
 
 	}
 
-
-REPMOD <- USED*5
-EVAL <- (log(gausD(PMAT, matrix(MUcolz, ncol = nsamples*npeakISO, nrow = nperms, byrow = FALSE)*USED*PPROB, sdPMAT), base = 10) + POSLMAT)*USED+ REPMOD
-
+#######################################
 
 EVALsum[order(EVALsum, decreasing = TRUE)  == 1]
  

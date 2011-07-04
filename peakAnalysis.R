@@ -1,11 +1,11 @@
 setwd("/Users/seanhackett/Desktop/RabinowitzLab/IsoPeak/")
 
 load("SpectrumScale.R")
-load("PeakFparams.R")
+load("Saved_Filez/PeakFparams.R")
 
 library(gplots)
 
-nanneal <- 500
+nanneal <- j
 
 #### Summary Plotz
 
@@ -18,6 +18,7 @@ RTpoly <- RTcoefs[1] + RTcoefs[2]*RTpos + RTcoefs[3]*RTpos^2 + RTcoefs[4]*RTpos^
 plot(RTpoints ~ RTpos)
 lines(RTpoly ~ RTpos)
 
+library(gplots)
 annealCol <- redblue(nanneal)
 
 for(j in 1:nanneal){
@@ -68,12 +69,14 @@ if(j == 1){plot(expSDpoly/expHetRange ~ expHetRange, type = "l", col = annealCol
 }
 
 	
-plot(MZpoints)
+#### SD(RT)
+
+plot(RT.SDtrack ~ c(1:nanneal), col = redblue(nanneal))
+
+RT.SDtrack
 
 
 
-RTsum <- RTcoefs[1] + RTcoefs[2]*RTvals + RTcoefs[3]*RTvals^2 + RTcoefs[4]*RTvals^3
-	
 	
 	
 		

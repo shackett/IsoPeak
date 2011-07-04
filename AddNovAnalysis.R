@@ -267,14 +267,11 @@ EVAL[,colnames(EVAL) == k] <- EVAL[,colnames(EVAL) == k] + ifelse(abs(LIKadjust)
 	}
 
 
- 
-
 REPMOD <- USED*5
 EVAL <- (log(gausD(PMAT, matrix(MUcolz, ncol = nsamples*npeakISO, nrow = nperms, byrow = FALSE)*USED*PPROB, sdPMAT), base = 10) + POSLMAT)*USED+ REPMOD
 
 
 EVALsum[order(EVALsum, decreasing = TRUE)  == 1]
- 
  
 EVALsum <- apply(EVAL, 1, sum)
 peakeval <- matrix(EVAL[order(EVALsum, decreasing = TRUE)[1:min(10, nperms)],], nrow = nsamples*npeakISO, byrow = TRUE)
@@ -292,13 +289,17 @@ output}
 
 ############ Look for adducts of each peak in stacker
 
-parentpeaks <- unique(stacker[,1])[!is.na(unique(stacker[,1]))]
-STD <- combinedProbs[combinedProbs$compound %in% compounds[com],]
+#parentpeaks <- unique(stacker[,1])[!is.na(unique(stacker[,1]))]
+parentpeaks <- unique(stacker$peaks[!is.na(stacker$peaks)][(apply(outz, 2, sum) != 0)])
+STD <- combinedProbs[combinedProbs$compound %in% compounds[com],][unique(stacker$iso[!is.na(stacker$peaks)][(apply(outz, 2, sum) != 0)]),]
+
 
 transM <- MZtransform(combinedAdds, STD)
-adductL <- length(unlist(t(addMZmat)))
 
 addMZmat <- (matrix(STD$mass, ncol = length(STD$mass), nrow = length(transM[,1]), byrow = TRUE) + matrix(transM$add, ncol = length(STD$mass), nrow = length(transM[,1])))*matrix(transM$scale, ncol = length(STD$mass), nrow = length(transM[,1]))
+
+adductL <- length(unlist(t(addMZmat)))
+
 
 addMZmat <- matrix(unlist(t(matrix(addMZmat, ncol = length(STD$mass), nrow = length(transM[,1]), byrow = TRUE))), ncol = 4, nrow = adductL)
 

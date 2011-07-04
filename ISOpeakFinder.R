@@ -158,7 +158,8 @@ if(j == 1){MZcoefE <- MZcoefO; RTcoefsE <- RTcoefsO; SDcoefE <- SDcoefO; RT.SDco
 	}else{
 MZcoefE <- rnorm(1, MZcoefO, 2*annealvar[j])
 	
-RTcoefsE <- (rnorm(n = length(RTcoefsO), mean = RTcoefsO, sd = 0.1*annealvar[j]) + rnorm(n = length(RTcoefsO), mean = 1, sd = 0.1*annealvar[j]))/2
+#RTcoefsE <- (rnorm(n = length(RTcoefsO), mean = RTcoefsO, sd = 0.1*annealvar[j]) + rnorm(n = length(RTcoefsO), mean = 1, sd = 0.1*annealvar[j]))/2
+RTcoefsE <- (rnorm(n = length(RTcoefsO), mean = RTcoefsO, sd = 0.1*annealvar[j]) + rnorm(n = length(RTcoefsO), mean = 1, sd = 0.1*annealvar[j])*annealvar[j])/(annealvar[j]+1)
 
 SDcoefE <- SDcoefO*runif(nhet, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
 
@@ -411,7 +412,7 @@ SDtrack[j,i]  <- SDcoefO[i]
 SDliktrack[j,i]  <- peakSDlik[i]}}	
 }
 
-save(j, RTtrack, RTliktrack, MZoffsetrack, MZliktrack, SDtrack, SDliktrack, file = "SpectrumScale.R")
+save(j, RTtrack, RTliktrack, MZoffsetrack, MZliktrack, SDtrack, SDliktrack, RT.SDtrack, RT.SDliktrack, file = "SpectrumScale.R")
 
 
 

@@ -176,20 +176,19 @@ for(i in 1:length(colZ[,1])){
 RTgrid[is.na(RTgrid)] <- 0	
 	
 
-permRTs <- apply(RTgrid*matrix(RT.weights, ncol = length(validP[1,]), nrow = length(validP[,1]), byrow = TRUE), 1, sum, na.rm = TRUE)/ifelse(is.na(validP), 0, 1)%*%RT.weights
+permRTs <- apply(RTgrid*matrix(RT.weights, ncol = length(validP[1,]), nrow = length(validP[,1]), byrow = TRUE), 1, sum, na.rm = TRUE)/(ifelse(is.na(validP), 0, 1)%*%RT.weights)
 
-logL.RT <- log(gausD(x=RTgrid, mu = matrix(permRTs, ncol = length(validP[1,]), nrow = length(validP[,1])), sd = matrix(0.1, ncol = length(validP[1,]), nrow = length(validP[,1]))), base = 2) * ifelse(is.na(validP), 0, 1)
+logL.RT <- log(gausD(peaks=RTgrid, expected = matrix(permRTs, ncol = length(validP[1,]), nrow = length(validP[,1])), sdP = matrix(0.1, ncol = length(validP[1,]), nrow = length(validP[,1]))), base = 2) * ifelse(is.na(validP), 0, 1)
 logL.RT[is.nan(logL.RT)] <- NA
 logL.RT.perm <- apply(logL.RT, 1, sum, na.rm = TRUE)
 
 ######
 
 validRT <- validP[logL.RT.perm > 0,]
-RT.perm <- permRTs[logL.RT.perm > 0]
 
 if(length(validRT[,1]) != 0){
 
-
+RT.perm <- permRTs[logL.RT.perm > 0]
 
 nuMiso <- length(levgrid[1,])
 npeakISO <- length(colZ[,1]) 
@@ -306,7 +305,7 @@ EVAL[,colnames(EVAL) == k] <- EVAL[,colnames(EVAL) == k] + ifelse(abs(LIKadjust)
 
 #######################################
 
-EVALsum[order(EVALsum, decreasing = TRUE)  == 1]
+#EVALsum[order(EVALsum, decreasing = TRUE)  == 1]
  
 EVALsum <- apply(EVAL, 1, sum)
 peakeval <- matrix(EVAL[order(EVALsum, decreasing = TRUE)[1:min(10, nperms)],], nrow = nsamples*npeakISO, byrow = TRUE)
@@ -325,12 +324,11 @@ output <- output[output$value != 0,]
 
 if(length(output[,1]) != 0){
 	
-if(ADDUCT.OUT <- FALSE){output}else{
+if(ADDUCT.OUT == FALSE){output}else{
 
 
 ############ Look for adducts of each peak in stacker
 
-#parentpeaks <- unique(stacker[,1])[!is.na(unique(stacker[,1]))]
 parentpeaks <- unique(stacker$peaks[!is.na(stacker$peaks)][(apply(outz, 2, sum) != 0)])
 STD <- combinedProbs[combinedProbs$compound %in% compounds[com],][unique(stacker$iso[!is.na(stacker$peaks)][(apply(outz, 2, sum) != 0)]),]
 
@@ -352,7 +350,6 @@ adduct.to.pbya[,i] <- rep(transM[,1] == adduct.name[i], times = length(STD[,1]))
 
 }
 
-#
 addMZmat <- matrix(unlist(t(matrix(addMZmat, ncol = length(STD$mass), nrow = length(transM[,1]), byrow = TRUE))), ncol = 4, nrow = adductL)
 
 addPmat <- matrix(sampleclass, ncol = nsamples, nrow = adductL, byrow = TRUE)
@@ -378,16 +375,21 @@ addRTeval <- log(dnorm(sapply(RT.perm.eval, RTdiff, standard = pRT), mean = 0, s
 
 addSIZEeval <- log(addPmat %*% t(peaksizeMat), base = 2)
 
+overall.add.output <- NULL
+
 for(k in 1:length(MU.perm.eval[,1])){
 	
 addLik <- addMZeval + addSIZEeval + matrix(addRTeval[,k], ncol = length(peaksizeMat[,1]), nrow = length(addPmat[,1]), byrow = TRUE)
+add.output <- NULL
 
-for(add in 1:length(adduct.name[,1])){
+for(add in 1:length(adduct.name)){
 	
 ind.addL <- addLik[adduct.to.pbya[,add],]
 add.nfacs <- apply(ind.addL, 1, sumthresh, thresh = -20, nvec = npeaks)
 	
 if(length(unlist(add.nfacs)) != 0){
+	
+#print(add)}}	
 	
 stacker <- NULL
 for(i in 1:length(add.nfacs)){
@@ -399,6 +401,10 @@ definedP <- ifelse(is.na(levgrid), 0, 1)
 
 validP <- levgrid[definedP%*%apply(addPmat[adduct.to.pbya[,add],], 1, max) > isoCov,]
 
+
+
+
+
 if(length(validP[,1]) != 0){
 
 colZ <- stacker[!is.na(stacker)[,1],]
@@ -407,15 +413,13 @@ add.probMatsub <- addPmat[adduct.to.pbya[,add],]
 nuMiso <- length(levgrid[1,])
 npeakISO <- length(colZ[,1]) 
 nperms <- length(validP[,1])
-	
-	
-	
-	
+posLsub <- t(addLik[adduct.to.pbya[,add],])
+			
 PMAT <- matrix(data = unlist(t(peaksizeMat[colZ[,1],])), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 #colnames(PMAT) <- rep(colZ[,1], each = nsamples)
 colnames(PMAT) <- rep(indies, times = npeakISO)
 
-PPROB <- matrix(data = unlist(t(as.data.frame(probMatsub[colZ[,2],]))), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
+PPROB <- matrix(data = unlist(t(as.data.frame(add.probMatsub[colZ[,2],]))), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(PPROB) <- rep(indies, times = npeakISO)
 
 sdPMAT <- matrix(data = peakSD(unlist(t(peaksizeMat[colZ[,1],])), h = 1, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
@@ -435,7 +439,7 @@ POSLMAT <- matrix(rep(posLinfo, each = nsamples), ncol = nsamples*npeakISO, nrow
 #convert validRT to peak-sample x nperm format using colZ
 
 isoRep <- table(colZ[,2])*nsamples
-gridEXP <- validRT[,as.numeric(rep(names(isoRep), times = isoRep))]
+gridEXP <- validP[,as.numeric(rep(names(isoRep), times = isoRep))]
 gridCOM <- matrix(data = (-1*rep(colZ[,1], each = nsamples)), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 
 USED <- ifelse(gridEXP+gridCOM == 0 & !is.na(gridEXP*gridCOM), 1, 0)
@@ -447,37 +451,53 @@ PAsum <- USED*PPROB*aMAT
 colnames(Psum) <- rep(indies, times = npeakISO)
 colnames(PAsum) <- rep(indies, times = npeakISO)
 
-MUcolz <- NULL
+add.MUcolz <- NULL
 if(nperms == 1){
 
 for(i in 1:nsamples){ 
 DEN <- Psum[,colnames(Psum) == i]*PAsum[,colnames(PAsum) == i]
 NUM <- PMAT[,colnames(PMAT) == i]*USED[,colnames(PMAT) == i]*aMAT[,colnames(PMAT) == i]*PPROB[,colnames(PMAT) == i]
-MUcolz <- cbind(MUcolz, NUM/DEN)
+add.MUcolz <- cbind(add.MUcolz, NUM/DEN)
 }
-MUcolz <- ifelse(is.nan(MUcolz), 0, MUcolz)
+add.MUcolz <- ifelse(is.nan(add.MUcolz), 0, add.MUcolz)
 for(i in 1:nuniqueSamp){	
-MUcolz[,c(1:nsamples)[replicates == i]] <- mean(MUcolz[,c(1:nsamples)[replicates == i]])
+add.MUcolz[,c(1:nsamples)[replicates == i]] <- mean(add.MUcolz[,c(1:nsamples)[replicates == i]])
 }}else{
 
 for(i in 1:nsamples){ 
 DEN <- apply(Psum[,colnames(Psum) == i], 1, sum)*apply(PAsum[,colnames(PAsum) == i], 1, sum)
 NUM <- apply(PMAT[,colnames(PMAT) == i]*USED[,colnames(PMAT) == i]*aMAT[,colnames(PMAT) == i]*PPROB[,colnames(PMAT) == i], 1, sum)
-MUcolz <- cbind(MUcolz, NUM/DEN)
+add.MUcolz <- cbind(add.MUcolz, NUM/DEN)
 }
-MUcolz <- ifelse(is.nan(MUcolz), 0, MUcolz)
+add.MUcolz <- ifelse(is.nan(add.MUcolz), 0, add.MUcolz)
 for(i in 1:nuniqueSamp){	
-MUcolz[,c(1:nsamples)[replicates == i]] <- apply(MUcolz[,c(1:nsamples)[replicates == i]], 1, mean)
+add.MUcolz[,c(1:nsamples)[replicates == i]] <- apply(add.MUcolz[,c(1:nsamples)[replicates == i]], 1, mean)
 }}
 
+add.fract = apply(add.MUcolz / matrix(MU.perm.eval[k,], nrow = nperms, ncol = nsamples, byrow = TRUE), 1, mean)
 
 
+REPMOD <- USED*5
+EVAL <- (log(gausD(PMAT, matrix(rep(MU.perm.eval[k,], times = npeakISO*nperms)*rep(add.fract, each = nsamples*npeakISO), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)*USED*PPROB, sdPMAT), base = 10) + POSLMAT)*USED+ REPMOD
 
 
-	}}}
+EVALsum <- apply(EVAL, 1, sum)
+peakeval <- matrix(EVAL[order(EVALsum, decreasing = TRUE)[1:min(10, nperms)],], nrow = nsamples*npeakISO, byrow = TRUE)
+rownames(peakeval) <- rep(c(1:npeakISO), each = length(indies))
+
+outz <- matrix(sapply(c(1:npeakISO), factcond, peakeval), ncol = npeakISO)
+outz <- rbind(outz, rep(0, times = length(outz[1,])))
 
 
-#######
+output <- data.frame(parentpk = k, addnum = add, adduct = adduct.name[add], colZ, standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], value = apply(outz, 2, max))
+output <- output[output$value != 0,]
+add.output <- rbind(add.output, output)
+
+}}}
+
+overall.add.output <- rbind(overall.add.output, add.output)
+}
+
 
 
 

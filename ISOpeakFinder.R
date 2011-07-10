@@ -298,7 +298,7 @@ pRT = RTeval[,RTn+1]
 #compare against all standards - combinedProbs$mass
 
 MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefO, mean = 0, sd = 2), base = 2)
-RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = 1), base = 2)
+RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = pRT*RT.SDcoefO), base = 2)
 SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
 posL <- MZe + RTe + SIZe
 

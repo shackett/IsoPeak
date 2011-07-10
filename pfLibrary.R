@@ -29,7 +29,6 @@ sumthresh <- function(vec, thresh, nvec){
 
 
 
-
 ############# Determine likelihood of a set of peaks corresponding to a compouds isotopes given the current evidence from peak size and position (posL) and the observed ratios of isotopes ###############
 
 GaussianLik <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase){

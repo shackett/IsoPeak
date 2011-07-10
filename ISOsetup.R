@@ -61,7 +61,7 @@ NlabMzRT <- rbind(NlabMzRT, data.frame(compound = knownRT$compound[i], chem.weig
 
 ######### Determine MW distribution of adducts ##########
 
-adducts <- read.table("ADDUCTS.csv", sep =",", header = TRUE)
+adducts <- read.table("Saved_Filez/ADDUCTS.csv", sep =",", header = TRUE)
 
 negions <- adducts[adducts$charge < 1,]
 Unadd <- NULL

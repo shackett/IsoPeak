@@ -112,7 +112,7 @@ posL <- MZe + RTe + SIZe
 
 #LIKeval <- cbind(matrix(MZe + RTe + SIZe, ncol = length(combinedProbs[,1]), nrow = length(peakpos), byrow = FALSE), -50)
 
-peakLIK <- lapply(c(1:length(compounds)), GaussianLik, coToiso, posL, peaksizeMat, probMat, npeaks, nhet+1, SDlmMat, HETbase)
+#peakLIK <- lapply(c(1:length(compounds)), GaussianLik, coToiso, posL, peaksizeMat, probMat, npeaks, nhet+1, SDlmMat, HETbase)
 
 LIKform <- NULL
 for (znum in 1:length(peakLIK)){
@@ -126,16 +126,16 @@ LIKmat[LIKform[z,1],LIKform[z,3]] <- LIKform[z,4]}
 MZlikE <- sum(apply(LIKmat, 1, max))/npeaks
 
 
-
 com <- 169
 
-GauS.w.Adduct(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedAdds, ADDUCT.OUT = FALSE, RT.UNKNOWN = FALSE)
+GauS.w.Adduct(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedAdds, combinedProbs, ADDUCT.OUT = TRUE, RT.UNKNOWN = FALSE, isoCov)
+
 
 ############# Determine likelihood of a set of peaks corresponding to a compouds isotopes given the current evidence from peak size and position (posL) and the observed ratios of isotopes ###############
 
-GauS.w.Adduct <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedAdds, ADDUCT.OUT, RT.UNKNOWN){
-#single peaks have the right ratio
-#print(com)
+GauS.w.Adduct <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.OUT, RT.UNKNOWN, isoCov){
+
+#subset of attributes for a single compound's isotopic variants
 subprob <- probMat[coToiso[,com],]
 posLsub <- posL[,coToiso[,com]]
 
@@ -144,7 +144,6 @@ if(length(unlist(nfacs)) != 0){
 
 stacker <- NULL
 for(i in 1:length(nfacs)){
-	#if(length(unlist(nfacs[i]) > 0)){stacker <- rbind(stacker, data.frame(peaks = unlist(nfacs[i]), iso = i))}
 	if(length(unlist(nfacs[i]) > 0)){stacker <- rbind(stacker, data.frame(peaks = unlist(nfacs[i]), iso = i), data.frame(peaks = NA, iso = i))}else{stacker <- rbind(stacker, data.frame(peaks = NA, iso = i))		}}
 
 factlevels = unstack(stacker)
@@ -155,16 +154,14 @@ Nf <- combinedProbs$uLabp[coToiso[,com]]
 Pf <- combinedProbs$nLabp[coToiso[,com]]
 
 #######
-
+print("prefail")
 validP <- levgrid[apply(definedP, 1, validPerms, Nf, Pf, isoCov),]
-
+print("postfail")
 if(length(validP[,1]) != 0){
 
 colZ <- stacker[!is.na(stacker)[,1],]
 
 probMatsub <- probMat[coToiso[,com],]
-
-
 
 ###### require that peaks in the same permutation have matching RT w/ sd = 0.2 min.
 
@@ -370,12 +367,14 @@ if(ADDUCT.OUT == FALSE){output}else{
 
 ############ Look for adducts of each peak in stacker ########
 
-parentpeaks <- unique(stacker$peaks[!is.na(stacker$peaks)][(apply(outz, 2, sum) != 0)])
-STD <- combinedProbs[combinedProbs$compound %in% compounds[com],][unique(stacker$iso[!is.na(stacker$peaks)][(apply(outz, 2, sum) != 0)]),]
+parentpeaks <- unique(stacker$peaks[!is.na(stacker$peaks)][(apply(par.outz, 2, sum) != 0)])
+STD <- combinedProbs[combinedProbs$compound %in% compounds[com],][unique(stacker$iso[!is.na(stacker$peaks)][(apply(par.outz, 2, sum) != 0)]),]
 
-transM <- MZtransform(combinedAdds, STD)
+transM <- MZtransform(combinedAdds, STD, sub.combinedProbs = combinedProbs[coToiso[,com],])
 
 addMZmat <- (matrix(STD$mass, ncol = length(STD$mass), nrow = length(transM[,1]), byrow = TRUE) + matrix(transM$add, ncol = length(STD$mass), nrow = length(transM[,1])))*matrix(transM$scale, ncol = length(STD$mass), nrow = length(transM[,1]))
+
+peakAssoc <- rep(rownames(STD), each = length(transM[,1]))
 
 adductL <- length(unlist(t(addMZmat)))
 
@@ -440,10 +439,6 @@ levgrid <- expand.grid(factlevels)
 definedP <- ifelse(is.na(levgrid), 0, 1)
 
 validP <- levgrid[definedP%*%apply(addPmat[adduct.to.pbya[,add],], 1, max) > isoCov,]
-
-
-
-
 
 if(length(validP[,1]) != 0){
 
@@ -581,7 +576,7 @@ frac.out <- add.fract[order(EVALsum, decreasing = TRUE)[1:min(10, nperms, posEVA
 outz <- rbind(outz, rep(0, times = length(outz[1,])))
 
 
-output <- data.frame(parentpk = k, addnum = add, adduct = adduct.name[add], add.colZ, standard = c(1:length(adduct.to.pbya[,1]))[adduct.to.pbya[,add]][add.colZ[,2]], value = apply(outz, 2, max), abundance.fraction = round(frac.out, digits = 4))
+output <- data.frame(parentpkcombos = k, addnum = add, adduct = adduct.name[add], add.colZ, standard = c(1:length(adduct.to.pbya[,1]))[adduct.to.pbya[,add]][add.colZ[,2]], value = apply(outz, 2, max), abundance.fraction = round(frac.out, digits = 4))
 output <- output[output$value != 0,]
 add.output <- rbind(add.output, output)
 
@@ -590,34 +585,47 @@ add.output <- rbind(add.output, output)
 overall.add.output <- rbind(overall.add.output, add.output)
 }
 
-length(MU.perm.eval[,1])
-
-
-
-overall.add.output$addnum
 
 #identify adducts by parent-peak permutation (with the associated mu), parental peak origin and type of adduct, adduct 
 
+Adduct.add <- matrix(data = 0, nrow = length(MU.perm.eval[,1]), ncol = length(STD[,1]))
+rownames(Adduct.add) <- c(1:length(MU.perm.eval[,1]))
+colnames(Adduct.add) <- rownames(STD)
 
+for(i in 1:length(overall.add.output[,1])){	
+	Adduct.add[overall.add.output$parentpkcombos[i],peakAssoc[overall.add.output$standard][i]] <- Adduct.add[overall.add.output$parentpkcombos[i],peakAssoc[overall.add.output$standard][i]] + overall.add.output$value[i]
+	}
+	
+par.outz <- par.outz[-length(par.outz[,1]),]
 
+stdnames <- rownames(combinedProbs[coToiso[,com],])
+colznames <- stdnames[colZ$iso]
 
+add.outz <- matrix(data = 0, ncol = length(par.outz[1,]), nrow = length(par.outz[,1]))
 
-iso
+for(i in 1:length(colznames)){
+	
+	add.outz[,i] <- ifelse(par.outz[,i] == 0, 0, 1)*Adduct.add[,colnames(Adduct.add) == colznames[i]]
+	
+	}
 
-standard
+total.outz <- par.outz + add.outz
 
-par.outz[-length(par.outz[,1]),]
+output <- data.frame(colZ, standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], value = apply(total.outz, 2, max))
+output <- output[output$value != 0,]
 
-
+output
 
 }}}}}}
 
 	
 #for expected i isotopes w/ known MZ and l adducts, generate a m*l matrix of expected M/Z including the global offset 
-		
-MZtransform <- function(combinedAdds, STD){
+
+	
+MZtransform <- function(combinedAdds, STD, sub.combinedProbs){
+
 STDmz <- STD$mass
-abundSTDmz <- STD[(STD$uLabp + STD$nLabp) > 0.1,]
+abundSTDmz <- sub.combinedProbs[(sub.combinedProbs$uLabp + sub.combinedProbs$nLabp) > 0.1,]
 
 transM <- NULL
 for(i in 1:length(combinedAdds[,1])){
@@ -628,7 +636,9 @@ for(i in 1:length(combinedAdds[,1])){
 		}}
 transM}
 
-
+sum.by.k <- function(i, overall.add.output){
+sum(overall.add.output$value[overall.add.output$parentpkcombos == i])
+}
 
 
 

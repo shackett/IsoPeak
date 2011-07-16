@@ -128,12 +128,16 @@ MZlikE <- sum(apply(LIKmat, 1, max))/npeaks
 
 com <- 169
 
-GauS.w.Adduct(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedAdds, combinedProbs, ADDUCT.OUT = TRUE, RT.UNKNOWN = FALSE, isoCov)
+GauS.w.Adduct(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN = FALSE, isoCov)
+
+peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN = FALSE, isoCov)
 
 
 ############# Determine likelihood of a set of peaks corresponding to a compouds isotopes given the current evidence from peak size and position (posL) and the observed ratios of isotopes ###############
 
-GauS.w.Adduct <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.OUT, RT.UNKNOWN, isoCov){
+GauS.w.Adduct <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE, ADDUCT.OUT, RT.UNKNOWN, isoCov){
+
+print(com)
 
 #subset of attributes for a single compound's isotopic variants
 subprob <- probMat[coToiso[,com],]
@@ -154,9 +158,9 @@ Nf <- combinedProbs$uLabp[coToiso[,com]]
 Pf <- combinedProbs$nLabp[coToiso[,com]]
 
 #######
-print("prefail")
+
 validP <- levgrid[apply(definedP, 1, validPerms, Nf, Pf, isoCov),]
-print("postfail")
+
 if(length(validP[,1]) != 0){
 
 colZ <- stacker[!is.na(stacker)[,1],]
@@ -237,13 +241,13 @@ MUcolz <- NULL
 if(nperms == 1){
 
 for(i in 1:nsamples){ 
-DEN <- Psum[,colnames(Psum) == i]*PAsum[,colnames(PAsum) == i]
-NUM <- PMAT[,colnames(PMAT) == i]*USED[,colnames(PMAT) == i]*aMAT[,colnames(PMAT) == i]*PPROB[,colnames(PMAT) == i]
-MUcolz <- cbind(MUcolz, NUM/DEN)
+DEN <- sum(Psum[,colnames(Psum) == i])*sum(PAsum[,colnames(PAsum) == i])
+NUM <- sum(PMAT[,colnames(PMAT) == i]*USED[,colnames(PMAT) == i]*aMAT[,colnames(PMAT) == i]*PPROB[,colnames(PMAT) == i])
+MUcolz <- c(MUcolz, NUM/DEN)
 }
 MUcolz <- ifelse(is.nan(MUcolz), 0, MUcolz)
 for(i in 1:nuniqueSamp){	
-MUcolz[,c(1:nsamples)[replicates == i]] <- mean(MUcolz[,c(1:nsamples)[replicates == i]])
+MUcolz[c(1:nsamples)[replicates == i]] <- mean(MUcolz[c(1:nsamples)[replicates == i]])
 }}else{
 
 for(i in 1:nsamples){ 
@@ -282,45 +286,45 @@ EVAL <- cbind(EVAL, absent.EVAL)
 
 ################# identify peaks that fit with both isotopes ################
 
-sharedPeaks <- names((apply(table(stacker[!is.na(stacker[,1]),]), 1, sum) != 1)[(apply(table(stacker[!is.na(stacker[,1]),]), 1, sum) != 1) == TRUE])
-if(length(sharedPeaks) > 0){
-sharedPeakPairs <- NULL
-sharedPnumVec <- NULL
-sharedPeakPairsFULL <- NULL
-for(i in 1:length(sharedPeaks)){
-for(j in 2:sum((stacker$peaks[!is.na(stacker$peaks)] %in% sharedPeaks[i]) == TRUE)){
+#sharedPeaks <- names((apply(table(stacker[!is.na(stacker[,1]),]), 1, sum) != 1)[(apply(table(stacker[!is.na(stacker[,1]),]), 1, sum) != 1) == TRUE])
+#if(length(sharedPeaks) > 0){
+#sharedPeakPairs <- NULL
+#sharedPnumVec <- NULL
+#sharedPeakPairsFULL <- NULL
+#for(i in 1:length(sharedPeaks)){
+#for(j in 2:sum((stacker$peaks[!is.na(stacker$peaks)] %in% sharedPeaks[i]) == TRUE)){
 	
-table(stacker)[row.names(table(stacker)) == sharedPeaks[i],]
+#table(stacker)[row.names(table(stacker)) == sharedPeaks[i],]
 	
-combos <- combn(c(1:nuMiso)[table(stacker)[row.names(table(stacker)) == sharedPeaks[i],] == 1], j)
-tMat <- matrix(data = 0, ncol = nuMiso, nrow = length(combos[1,]))
-combosFULL <- combn(c(1:npeakISO)[stacker$peaks[!is.na(stacker$peaks)] %in% sharedPeaks[i]], j)
-tMatFULL <- matrix(data = 0, ncol = npeakISO, nrow = length(combos[1,]))		
+#combos <- combn(c(1:nuMiso)[table(stacker)[row.names(table(stacker)) == sharedPeaks[i],] == 1], j)
+#tMat <- matrix(data = 0, ncol = nuMiso, nrow = length(combos[1,]))
+#combosFULL <- combn(c(1:npeakISO)[stacker$peaks[!is.na(stacker$peaks)] %in% sharedPeaks[i]], j)
+#tMatFULL <- matrix(data = 0, ncol = npeakISO, nrow = length(combos[1,]))		
 		
 	
-for(k in 1:length(combos[1,])){	
-tMat[k,combos[,1]] <- (1/j)	
-tMatFULL[k, combosFULL[,1]] <- 1}
-}
-sharedPeakPairs <- rbind(sharedPeakPairs, tMat)	
-sharedPnumVec <- c(sharedPnumVec, rep(sharedPeaks[i], times = length(tMat[,1])))
-sharedPeakPairsFULL <- rbind(sharedPeakPairsFULL, tMatFULL)
-}
+#for(k in 1:length(combos[1,])){	
+#tMat[k,combos[,1]] <- (1/j)	
+#tMatFULL[k, combosFULL[,1]] <- 1}
+#}
+#sharedPeakPairs <- rbind(sharedPeakPairs, tMat)	
+#sharedPnumVec <- c(sharedPnumVec, rep(sharedPeaks[i], times = length(tMat[,1])))
+#sharedPeakPairsFULL <- rbind(sharedPeakPairsFULL, tMatFULL)
+#}
 
-rTemp <- validRT
-rTemp[is.na(rTemp)] <- 0
+#rTemp <- validRT
+#rTemp[is.na(rTemp)] <- 0
 
-Tcombos <- (as.matrix(rTemp) %*% t(sharedPeakPairs)) == matrix(as.numeric(sharedPnumVec), nrow = length(rTemp[,1]), ncol = length(sharedPeakPairs[,1]), byrow = TRUE)
+#Tcombos <- (as.matrix(rTemp) %*% t(sharedPeakPairs)) == matrix(as.numeric(sharedPnumVec), nrow = length(rTemp[,1]), ncol = length(sharedPeakPairs[,1]), byrow = TRUE)
 
-Tcombos <- ifelse(Tcombos, 1, 0)
+#Tcombos <- ifelse(Tcombos, 1, 0)
 
-for(k in 1:nsamples){
+#for(k in 1:nsamples){
 	
-LIKadjust <- log(exp((Tcombos %*% sharedPeakPairsFULL)*EVAL[,colnames(EVAL) == k]) / (Tcombos*(exp(EVAL[,colnames(EVAL) == k]) %*% t(sharedPeakPairsFULL)))%*% sharedPeakPairsFULL)
+#LIKadjust <- log(exp((Tcombos %*% sharedPeakPairsFULL)*EVAL[,colnames(EVAL) == k]) / (Tcombos*(exp(EVAL[,colnames(EVAL) == k]) %*% t(sharedPeakPairsFULL)))%*% sharedPeakPairsFULL)
 
-EVAL[,colnames(EVAL) == k] <- EVAL[,colnames(EVAL) == k] + ifelse(abs(LIKadjust) == Inf, 1, LIKadjust)
+#EVAL[,colnames(EVAL) == k] <- EVAL[,colnames(EVAL) == k] + ifelse(abs(LIKadjust) == Inf, 1, LIKadjust)
 
-	}}
+#	}}
 
 #######################################
 
@@ -349,26 +353,29 @@ eval.correction <- eval.correction*rep(apply(peakeval[rownames(peakeval) == "abs
 	
 peakeval <- peakeval[rownames(peakeval) != "absent",] + eval.correction
 rownames(peakeval) <- c(rep(c(1:npeakISO), each = length(indies)))
-}
 
 RT.perm.eval <- RT.perm[order(EVALsum, decreasing = TRUE)[1:min(10, nperms, posEVAL)]]
-MU.perm.eval <- MUcolz[order(EVALsum, decreasing = TRUE)[1:min(10, nperms, posEVAL)],]
+
+if(is.matrix(MUcolz) == FALSE){MU.perm.eval <- t(matrix(MUcolz))}else{
+MU.perm.eval <- MUcolz[order(EVALsum, decreasing = TRUE)[1:min(10, nperms, posEVAL)],]}
 
 par.outz <- matrix(sapply(c(1:npeakISO), factcond, peakeval), ncol = npeakISO)
 par.outz <- rbind(par.outz, rep(0, times = length(par.outz[1,])))
 
-output <- data.frame(colZ, standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], value = apply(par.outz, 2, max))
-output <- output[output$value != 0,]
+par.output <- data.frame(colZ, standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], value = apply(par.outz, 2, max))
+par.output <- par.output[par.output$value != 0,]
 
-if(length(output[,1]) != 0){
+}else{output <- NULL}
+
+if(length(output[,1]) != 0 & !is.null(output)){
 	
-if(ADDUCT.OUT == FALSE){output}else{
+if(ADDUCT.USE == FALSE){output}else{
 
 
 ############ Look for adducts of each peak in stacker ########
 
-parentpeaks <- unique(stacker$peaks[!is.na(stacker$peaks)][(apply(par.outz, 2, sum) != 0)])
-STD <- combinedProbs[combinedProbs$compound %in% compounds[com],][unique(stacker$iso[!is.na(stacker$peaks)][(apply(par.outz, 2, sum) != 0)]),]
+STD <- combinedProbs[unique(par.output$standard),]
+#STD <- combinedProbs[combinedProbs$compound %in% compounds[com],][unique(stacker$iso[!is.na(stacker$peaks)][(apply(par.outz, 2, sum) != 0)]),]
 
 transM <- MZtransform(combinedAdds, STD, sub.combinedProbs = combinedProbs[coToiso[,com],])
 
@@ -395,18 +402,8 @@ addPmat <- matrix(sampleclass, ncol = nsamples, nrow = adductL, byrow = TRUE)
 
 addPmat <- ifelse(addPmat == "N", 1, 0)*matrix(unlist((matrix(STD$nLabp, ncol = length(STD$mass), nrow = length(transM[,1]), byrow = TRUE)*matrix(transM$nLab, ncol = length(STD$mass), nrow = length(transM[,1])))), ncol = 4, nrow = adductL) + ifelse(addPmat == "N", 0, 1)*matrix(unlist((matrix(STD$uLabp, ncol = length(STD$mass), nrow = length(transM[,1]), byrow = TRUE)*matrix(transM$unLab, ncol = length(STD$mass), nrow = length(transM[,1])))), ncol = 4, nrow = adductL) 
 
-#matrix(unlist((matrix(STD$nLabp, ncol = length(STD$mass), nrow = length(transM[,1]), byrow = TRUE) + matrix(transM$nLab, ncol = length(STD$mass), nrow = length(transM[,1]))))
 
-#matrix(paste(t(matrix(STD$mass, ncol = length(STD$mass), nrow = length(transM[,1]), byrow = TRUE)), t(matrix(transM$adduct, ncol = length(STD$mass), nrow = length(transM[,1])))), ncol = 4, nrow = adductL)
-
-
-
-
-#PeakAddMZmat <- matrix(data = rep(pMZ, each = nsamples), ncol = nsamples*length(pMZ), nrow = length(addPmat[,1]), byrow = TRUE)
-
-#STDaddMZmat <- matrix(data = unlist(t(matrix(addMZmat, ncol = length(STD$mass), nrow = length(transM[,1]), byrow = TRUE))), ncol = nsamples*length(pMZ), nrow = length(transM[,1]))
-
-
+# MZ, RT diff for the adducts of the peaks observed in the initial survey
 
 addMZeval <- t(log(dnorm(sapply(addMZmat[,1], masserror, standard = pMZ) + MZoffsetrack[nanneal], mean = 0, sd = 1), base = 2))
 
@@ -416,15 +413,20 @@ addSIZEeval <- log(addPmat %*% t(peaksizeMat), base = 2)
 
 overall.add.output <- NULL
 
-for(k in 1:length(MU.perm.eval[,1])){
+par.peak.perms <- ifelse(is.matrix(MU.perm.eval) == TRUE, length(MU.perm.eval[,1]), 1)
+
+
+
+for(k in 1:par.peak.perms){
 	
 addLik <- addMZeval + addSIZEeval + matrix(addRTeval[,k], ncol = length(peaksizeMat[,1]), nrow = length(addPmat[,1]), byrow = TRUE)
 add.output <- NULL
 
 for(add in 1:length(adduct.name)){
-	
+
 ind.addL <- addLik[adduct.to.pbya[,add],]
-add.nfacs <- apply(ind.addL, 1, sumthresh, thresh = -20, nvec = npeaks)
+if(is.matrix(ind.addL) == TRUE){
+add.nfacs <- apply(ind.addL, 1, sumthresh, thresh = -20, nvec = npeaks)}else{add.nfacs <- sumthresh(ind.addL, thresh = -20, nvec = npeaks)}
 	
 if(length(unlist(add.nfacs)) != 0){
 	
@@ -438,7 +440,7 @@ factlevels = unstack(stacker)
 levgrid <- expand.grid(factlevels)
 definedP <- ifelse(is.na(levgrid), 0, 1)
 
-validP <- levgrid[definedP%*%apply(addPmat[adduct.to.pbya[,add],], 1, max) > isoCov,]
+validP <- levgrid[definedP%*%apply(matrix(addPmat[adduct.to.pbya[,add],], ncol = nsamples),1, max) > isoCov,]
 
 if(length(validP[,1]) != 0){
 
@@ -447,7 +449,7 @@ add.colZ <- stacker[!is.na(stacker)[,1],]
 add.probMatsub <- addPmat[adduct.to.pbya[,add],]
 nuMiso <- length(levgrid[1,])
 npeakISO <- length(add.colZ[,1]) 
-nperms <- length(validP[,1])
+nperms <- ifelse(is.matrix(validP), length(validP[,1]), length(validP))
 posLsub <- t(addLik[adduct.to.pbya[,add],])
 			
 PMAT <- matrix(data = unlist(t(peaksizeMat[add.colZ[,1],])), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
@@ -486,17 +488,19 @@ PAsum <- USED*PPROB*aMAT
 colnames(Psum) <- rep(indies, times = npeakISO)
 colnames(PAsum) <- rep(indies, times = npeakISO)
 
+#############
+
 add.MUcolz <- NULL
 if(nperms == 1){
 
 for(i in 1:nsamples){ 
-DEN <- Psum[,colnames(Psum) == i]*PAsum[,colnames(PAsum) == i]
-NUM <- PMAT[,colnames(PMAT) == i]*USED[,colnames(PMAT) == i]*aMAT[,colnames(PMAT) == i]*PPROB[,colnames(PMAT) == i]
-add.MUcolz <- cbind(add.MUcolz, NUM/DEN)
+DEN <- sum(Psum[,colnames(Psum) == i])*sum(PAsum[,colnames(PAsum) == i])
+NUM <- sum(PMAT[,colnames(PMAT) == i]*USED[,colnames(PMAT) == i]*aMAT[,colnames(PMAT) == i]*PPROB[,colnames(PMAT) == i])
+add.MUcolz <- c(add.MUcolz, NUM/DEN)
 }
 add.MUcolz <- ifelse(is.nan(add.MUcolz), 0, add.MUcolz)
 for(i in 1:nuniqueSamp){	
-add.MUcolz[,c(1:nsamples)[replicates == i]] <- mean(add.MUcolz[,c(1:nsamples)[replicates == i]])
+add.MUcolz[c(1:nsamples)[replicates == i]] <- mean(add.MUcolz[c(1:nsamples)[replicates == i]])
 }}else{
 
 for(i in 1:nsamples){ 
@@ -509,11 +513,12 @@ for(i in 1:nuniqueSamp){
 add.MUcolz[,c(1:nsamples)[replicates == i]] <- apply(add.MUcolz[,c(1:nsamples)[replicates == i]], 1, mean)
 }}
 
-add.fract = apply(add.MUcolz / matrix(MU.perm.eval[k,], nrow = nperms, ncol = nsamples, byrow = TRUE), 1, mean)
+if(par.peak.perms != 1){MU.perm <- MU.perm.eval[k,]}else{MU.perm <- MU.perm.eval}
 
+add.fract = apply(add.MUcolz / matrix(MU.perm, nrow = nperms, ncol = nsamples, byrow = TRUE), 1, mean)
 
 REPMOD <- USED*5
-EVAL <- (log(gausD(PMAT, matrix(rep(MU.perm.eval[k,], times = npeakISO*nperms)*rep(add.fract, each = nsamples*npeakISO), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)*USED*PPROB, sdPMAT), base = 10) + POSLMAT)*USED+ REPMOD
+EVAL <- (log(gausD(PMAT, matrix(rep(MU.perm, times = npeakISO*nperms)*rep(add.fract, each = nsamples*npeakISO), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)*USED*PPROB, sdPMAT), base = 10) + POSLMAT)*USED+ REPMOD
 
 ### Evaluate penalties for absent - large signal adducts
 
@@ -532,7 +537,7 @@ absent.prob = matrix(unlist(t(add.probMatsub)), ncol = nuMiso*nsamples, nrow = n
 
 #evaluate how unlikely absent peaks are to be missing, and then round peaks with a low penalty to 0 (so as to not penalize absent peaks where the expected abundance is minute), set threshold where penalty applies to MUcolz*absent.prob > 2*threshold
 
-absent.EVAL = (log(gausD(absent.peaksize, matrix(rep(MU.perm.eval[k,], times = nuMiso*nperms)*rep(add.fract, each = nsamples*nuMiso), ncol = nsamples*nuMiso, nrow = nperms, byrow = TRUE)*absent.used*absent.prob, absent.sd), base = 10))*absent.used*ifelse(matrix(rep(MU.perm.eval[k,], times = nuMiso*nperms)*rep(add.fract, each = nsamples*nuMiso), ncol = nsamples*nuMiso, nrow = nperms, byrow = TRUE)*absent.prob < Signal.Thresh, 0, 1)
+absent.EVAL = (log(gausD(absent.peaksize, matrix(rep(MU.perm, times = nuMiso*nperms)*rep(add.fract, each = nsamples*nuMiso), ncol = nsamples*nuMiso, nrow = nperms, byrow = TRUE)*absent.used*absent.prob, absent.sd), base = 10))*absent.used*ifelse(matrix(rep(MU.perm, times = nuMiso*nperms)*rep(add.fract, each = nsamples*nuMiso), ncol = nsamples*nuMiso, nrow = nperms, byrow = TRUE)*absent.prob < Signal.Thresh, 0, 1)
 
 EVAL <- cbind(EVAL, absent.EVAL)
 
@@ -569,7 +574,7 @@ eval.correction <- eval.correction*rep(apply(peakeval[rownames(peakeval) == "abs
 
 peakeval <- peakeval[rownames(peakeval) != "absent",] + eval.correction
 rownames(peakeval) <- c(rep(c(1:npeakISO), each = length(indies)))
-}
+
 
 outz <- matrix(sapply(c(1:npeakISO), factcond, peakeval), ncol = npeakISO)
 frac.out <- add.fract[order(EVALsum, decreasing = TRUE)[1:min(10, nperms, posEVAL)]][apply(outz, 1, sum) == max(apply(outz, 1, sum))]
@@ -580,16 +585,18 @@ output <- data.frame(parentpkcombos = k, addnum = add, adduct = adduct.name[add]
 output <- output[output$value != 0,]
 add.output <- rbind(add.output, output)
 
-}}}
+}}}}
 
 overall.add.output <- rbind(overall.add.output, add.output)
 }
 
 
+if(!is.null(overall.add.output)){
+
 #identify adducts by parent-peak permutation (with the associated mu), parental peak origin and type of adduct, adduct 
 
-Adduct.add <- matrix(data = 0, nrow = length(MU.perm.eval[,1]), ncol = length(STD[,1]))
-rownames(Adduct.add) <- c(1:length(MU.perm.eval[,1]))
+Adduct.add <- matrix(data = 0, nrow = par.peak.perms, ncol = length(STD[,1]))
+rownames(Adduct.add) <- c(1:par.peak.perms)
 colnames(Adduct.add) <- rownames(STD)
 
 for(i in 1:length(overall.add.output[,1])){	
@@ -601,11 +608,12 @@ par.outz <- par.outz[-length(par.outz[,1]),]
 stdnames <- rownames(combinedProbs[coToiso[,com],])
 colznames <- stdnames[colZ$iso]
 
-add.outz <- matrix(data = 0, ncol = length(par.outz[1,]), nrow = length(par.outz[,1]))
+
+add.outz <- matrix(data = 0, ncol = ifelse(is.matrix(par.outz), length(par.outz[1,]), length(par.outz)), nrow = par.peak.perms)
 
 for(i in 1:length(colznames)){
 	
-	add.outz[,i] <- ifelse(par.outz[,i] == 0, 0, 1)*Adduct.add[,colnames(Adduct.add) == colznames[i]]
+	add.outz[,i] <- ifelse(is.matrix(par.outz), ifelse(par.outz[,i] == 0, 0, 1), ifelse(par.outz[i] == 0, 0, 1))*Adduct.add[,colnames(Adduct.add) == colznames[i]]
 	
 	}
 
@@ -614,7 +622,13 @@ total.outz <- par.outz + add.outz
 output <- data.frame(colZ, standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], value = apply(total.outz, 2, max))
 output <- output[output$value != 0,]
 
-output
+
+output}else{
+	
+output <- data.frame(colZ, standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], value = apply(par.outz, 2, max))
+output <- output[output$value != 0,]
+	
+}
 
 }}}}}}
 

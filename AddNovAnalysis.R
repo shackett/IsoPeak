@@ -130,7 +130,7 @@ com <- 169
 
 GauS.w.Adduct(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN = FALSE, isoCov)
 
-peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN = FALSE, isoCov)
+peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = TRUE, RT.UNKNOWN = FALSE, isoCov)
 
 
 ############# Determine likelihood of a set of peaks corresponding to a compouds isotopes given the current evidence from peak size and position (posL) and the observed ratios of isotopes ###############
@@ -365,9 +365,9 @@ par.outz <- rbind(par.outz, rep(0, times = length(par.outz[1,])))
 par.output <- data.frame(colZ, standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], value = apply(par.outz, 2, max))
 par.output <- par.output[par.output$value != 0,]
 
-}else{output <- NULL}
+}else{par.output <- NULL}
 
-if(length(output[,1]) != 0 & !is.null(output)){
+if(length(par.output[,1]) != 0 & !is.null(par.output)){
 	
 if(ADDUCT.USE == FALSE){output}else{
 
@@ -430,7 +430,7 @@ add.nfacs <- apply(ind.addL, 1, sumthresh, thresh = -20, nvec = npeaks)}else{add
 	
 if(length(unlist(add.nfacs)) != 0){
 	
-#print(add)}}	
+#print(add)}}
 	
 stacker <- NULL
 for(i in 1:length(add.nfacs)){
@@ -440,23 +440,23 @@ factlevels = unstack(stacker)
 levgrid <- expand.grid(factlevels)
 definedP <- ifelse(is.na(levgrid), 0, 1)
 
-validP <- levgrid[definedP%*%apply(matrix(addPmat[adduct.to.pbya[,add],], ncol = nsamples),1, max) > isoCov,]
+validP <- as.matrix(levgrid[definedP%*%apply(matrix(addPmat[adduct.to.pbya[,add],], ncol = nsamples),1, max) > isoCov,], ncol = length(definedP[1,]))
 
 if(length(validP[,1]) != 0){
 
 add.colZ <- stacker[!is.na(stacker)[,1],]
 
-add.probMatsub <- addPmat[adduct.to.pbya[,add],]
+add.probMatsub <- matrix(addPmat[adduct.to.pbya[,add],], ncol = nsamples)
 nuMiso <- length(levgrid[1,])
-npeakISO <- length(add.colZ[,1]) 
-nperms <- ifelse(is.matrix(validP), length(validP[,1]), length(validP))
-posLsub <- t(addLik[adduct.to.pbya[,add],])
+npeakISO <- length(add.colZ[,1])
+nperms <- ifelse(is.matrix(validP), length(validP[,1]), 1)
+posLsub <- matrix(t(addLik[adduct.to.pbya[,add],]), ncol = nuMiso)
 			
 PMAT <- matrix(data = unlist(t(peaksizeMat[add.colZ[,1],])), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 #colnames(PMAT) <- rep(add.colZ[,1], each = nsamples)
 colnames(PMAT) <- rep(indies, times = npeakISO)
 
-PPROB <- matrix(data = unlist(t(as.data.frame(add.probMatsub[add.colZ[,2],]))), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
+PPROB <- matrix(data = unlist(t(add.probMatsub[add.colZ[,2],])), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(PPROB) <- rep(indies, times = npeakISO)
 
 sdPMAT <- matrix(data = peakSD(unlist(t(peaksizeMat[add.colZ[,1],])), h = 1, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
@@ -515,7 +515,10 @@ add.MUcolz[,c(1:nsamples)[replicates == i]] <- apply(add.MUcolz[,c(1:nsamples)[r
 
 if(par.peak.perms != 1){MU.perm <- MU.perm.eval[k,]}else{MU.perm <- MU.perm.eval}
 
-add.fract = apply(add.MUcolz / matrix(MU.perm, nrow = nperms, ncol = nsamples, byrow = TRUE), 1, mean)
+
+add.fract = add.MUcolz / matrix(MU.perm, nrow = nperms, ncol = nsamples, byrow = TRUE)
+add.fract[is.nan(add.fract)] <- NA
+add.fract = apply(add.fract, 1, mean, na.rm = TRUE)
 
 REPMOD <- USED*5
 EVAL <- (log(gausD(PMAT, matrix(rep(MU.perm, times = npeakISO*nperms)*rep(add.fract, each = nsamples*npeakISO), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)*USED*PPROB, sdPMAT), base = 10) + POSLMAT)*USED+ REPMOD
@@ -608,29 +611,70 @@ par.outz <- par.outz[-length(par.outz[,1]),]
 stdnames <- rownames(combinedProbs[coToiso[,com],])
 colznames <- stdnames[colZ$iso]
 
+#make an adduct modification matrix that corresponds to the peak-correspondences in par.outz
 
 add.outz <- matrix(data = 0, ncol = ifelse(is.matrix(par.outz), length(par.outz[1,]), length(par.outz)), nrow = par.peak.perms)
 
 for(i in 1:length(colznames)){
 	
-	add.outz[,i] <- ifelse(is.matrix(par.outz), ifelse(par.outz[,i] == 0, 0, 1), ifelse(par.outz[i] == 0, 0, 1))*Adduct.add[,colnames(Adduct.add) == colznames[i]]
+if(is.matrix(par.outz) == TRUE){add.match <- ifelse(par.outz[,i] == 0, 0, 1) * Adduct.add[,colnames(Adduct.add) == colznames[i]]}else{
+add.match <- ifelse(par.outz[i] == 0, 0, 1)*Adduct.add[,colnames(Adduct.add) == colznames[i]]}
+if(length(add.match) == 0){add.outz[,i] <- rep(0, times = par.peak.perms)}else{add.outz[,i] <- add.match}
 	
 	}
 
+#total confidence in parental peaks is the confidence in the peak and the combined support from adducts that agree with its abundance and located standards.
+
 total.outz <- par.outz + add.outz
 
+if(ADDUCT.OUT == FALSE){
+	
 output <- data.frame(colZ, standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], value = apply(total.outz, 2, max))
 output <- output[output$value != 0,]
 
 
-output}else{
+	}
+if(ADDUCT.OUT == TRUE){
+	
+peak.add <- paste(overall.add.output$standard, overall.add.output$peaks, sep = "-")
+unique.peak.add <- unique(peak.add)
+
+#take the best adduct for each peak-adduct correspondence across all parental peak combinations
+
+top.adducts <- NULL
+
+for(i in 1:length(unique.peak.add)){
+	
+top.adducts <- rbind(top.adducts, overall.add.output[overall.add.output$value == max(overall.add.output$value[peak.add == unique.peak.add[i]]),][1,])
+	
+	}
+
+output <- data.frame(colZ, type = "STD", parent = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], adduct = NA, value = apply(total.outz, 2, max))
+	
+output <- rbind(output, data.frame(peaks = top.adducts$peaks, iso = top.adducts$iso, type = "ADDUCT", parent = peakAssoc[top.adducts$standard], adduct = top.adducts$standard, value = top.adducts$value))	
+}
+
+output <- output[output$value != 0,]
+output
+
+}else{
+	
+if(ADDUCT.OUT == FALSE){
 	
 output <- data.frame(colZ, standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], value = apply(par.outz, 2, max))
+output <- output[output$value != 0,]
+
+
+	}
+if(ADDUCT.OUT == TRUE){	
+	
+	
+output <- data.frame(colZ, type = "STD", standard = c(1:length(coToiso[,1]))[coToiso[,com]][colZ[,2]], adduct = NA, value = apply(par.outz, 2, max))
 output <- output[output$value != 0,]
 	
 }
 
-}}}}}}
+}}}}}}}
 
 	
 #for expected i isotopes w/ known MZ and l adducts, generate a m*l matrix of expected M/Z including the global offset 

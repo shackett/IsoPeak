@@ -1,22 +1,52 @@
-#qsub -l 1day -cwd -sync n Rscript //Genomics/grid/users/shackett/ISOpeakFinder/ISOpeakFinder.R
-
-#qsub -l long -cwd -sync n Rscript //Genomics/grid/users/shackett/ISOpeakFinder/ISOpeakFinder.R
-
 options(digits = 13)
 
-CETUSUSED <- TRUE
+CETUSUSED <- FALSE
 
 if(CETUSUSED == TRUE){setwd("/Genomics/grid/users/shackett/ISOpeakFinder/")}else{
 setwd("/Users/seanhackett/Desktop/RabinowitzLab/IsoPeak/")}
 
-load("Saved_Filez/knownMzRTre.R")
 source("pfLibrary.R")
+source("Adduct.Lib.R")
+load("Saved_Filez/knownMzRTre.R")
+load("Saved_Filez/knownProbs.R")
 
+
+
+############### Constants ################
+### From prepare peak sizes
+
+peakQualThresh <- 0.8
+
+####From adduct.lib.R ###
+
+isoCov <- 0.7
+Threshold <- 300
+Signal.Thresh <- 2*Threshold
+Supthresh <- -20 
+RT.coel.SD <- 0.1
+
+### From Paramter evaluation by SA ###
+
+#nanneal - Number of rounds of Metropolis-Hastings sampling 
+nanneal <- 20
+#RTn - the number of locally altered polynomials used to assess the RT scaling of the 
+RTn = 20
+#Degree of the fitted polynomial for RT alignment
+RTpolyD = 4
+#HETbase - the base used for forming the locally altered polynomials used to assess the relationship between peak abundance and SD 
+HETbase <- 1.8
+#Degree of the fitted polynomial for assessing heteroscedasticity
+HETpolyD = 4
+
+
+################ Prepare Peak sizes ##################################################
 
 allPeaks <- read.table("Saved_Filez/4.23.11aligned.csv", sep = ",", header = TRUE)
 
-#Constants
-isoCov <- 0.7
+#filter by peak quality
+allPeaks <- allPeaks[allPeaks$maxQuality > peakQualThresh,]
+
+###Define sample names and labeling status: N = N15, P = natural.  Sample class points to expected isotope abundances in combinedProbs
 
 samples <- c("N.1", "N.2", "P.1", "P.2")
 sampleclass <- c("N", "N", "P", "P")
@@ -27,46 +57,28 @@ nuniqueSamp <- length(unique(replicates))
 blanks <- c("blank.1", "blank.2", "blank.3")
 compounds <- unique(MzRTrefine$compound)
 
-### Compare Harmonic means of blanks and samples - baseline so approach is valid where samples have no value
+### Compare means of blanks and samples - baseline so approach is valid where samples have no value
 
-allPeaks[,names(allPeaks) %in% c(samples, blanks)][allPeaks[,names(allPeaks) %in% c(samples, blanks)] < 300] <- 300
+allPeaks[,names(allPeaks) %in% c(samples, blanks)][allPeaks[,names(allPeaks) %in% c(samples, blanks)] < Threshold] <- Threshold
 
-SampM = apply(allPeaks[,names(allPeaks) %in% samples], 1, harmM)
-BLM = apply(allPeaks[,names(allPeaks) %in% blanks], 1, harmM)
+#switched harmonic to arithmetic mean
+SampM = apply(allPeaks[,names(allPeaks) %in% samples], 1, mean)
+BLM = apply(allPeaks[,names(allPeaks) %in% blanks], 1, mean)
 allPeaks <- cbind(allPeaks, BLM)
 
 valS <- allPeaks[SampM > 2*BLM,]
 
 peaksizeMat <- valS[,colnames(allPeaks) %in% samples] - valS$BLM
-peaksizeMat[peaksizeMat < 300] <- 300
+peaksizeMat[peaksizeMat < Threshold] <- Threshold
 
-#make n-isotopic labeled and non-labeled indexes equivalent
-
-combinedProbs <- NULL
-
-for(i in 1:length(compounds)){
-sublist <- MzRTrefine[MzRTrefine$compound %in% compounds[i],]
-nsublist <- nisoMzRTrefine[nisoMzRTrefine$compound %in% compounds[i],]
-
-jointmass <- union(sublist$mass, nsublist$mass)
-if(length(jointmass[!(jointmass %in% sublist$mass)]) != 0){
-sublist  <- rbind(sublist, data.frame(compound = sublist$compound[1], mass = jointmass[!(jointmass %in% sublist$mass)], prob = 0, RT = sublist$RT[1])) 
-sublist <- sublist[order(sublist$mass),]
-	}
-	
-if(length(jointmass[!(jointmass %in% nsublist$mass)]) != 0){
-nsublist  <- rbind(nsublist, data.frame(compound = nsublist$compound[1], mass = jointmass[!(jointmass %in% nsublist$mass)], prob = 0, RT = nsublist$RT[1])) 
-nsublist <- nsublist[order(nsublist$mass),]
-	}	
-
-combinedProbs <- rbind(combinedProbs, data.frame(compound = sublist$compound, mass = sublist$mass, RT = sublist$RT, uLabp = sublist$prob, nLabp = nsublist$prob))}
-
-#save(combinedProbs, file = "knownProbs.R")
+#Make an nsamples x mSTD matrix for taking the dot product abundance
 
 probMat <- matrix(data =NA, ncol = length(sampleclass), nrow = length(combinedProbs[,1]))
 for(i in 1:length(sampleclass)){
 if(sampleclass[i] == "P"){probMat[,i] <- combinedProbs$uLabp}else{probMat[,i] <- combinedProbs$nLabp}
 }	
+
+#Isotopic variants corresponding to each compound
 
 coToiso <- matrix(data = NA, nrow = length(combinedProbs[,1]), ncol = length(compounds))
 colnames(coToiso) <- compounds
@@ -74,14 +86,19 @@ colnames(coToiso) <- compounds
 for(i in 1:length(compounds)){
 	coToiso[,i] <- combinedProbs[,1] %in% compounds[i]
 	}
-	
 
-#### Simulated Annealing ####
+#import adduct list from ISOsetup.R
+# - adducts of a compound identified by ISOpeakFinder, with a (-) charge.  Adducts are expected to be proportionally related to their derivatized peak (X-H) by a scaling factor to be determined
 
-######### Setup ####################
+load("Saved_Filez/negAdducts.R")
+
+#remove the -H form as this is taken as the default ion
+combinedAdds <- combinedAdds[-1,]
+
+################### Parameter Evaluation by Simulated Annealing ############################
 
 # Establish annealing schedule # must be a multiple of 20
-nanneal <- 20
+
 anneals <- rep(NA, times = nanneal)
 for(j in 1:nanneal){
 	anneals[j] = 1*j^-0.05
@@ -108,75 +125,90 @@ combined <- combinedProbs
 RTvals = valS$medRt
 MZvals = valS$medMz
 
-RTn = 20
 RTpos <- range(RTvals)[1] + c(0:(RTn-1))*(diff(range(RTvals))/(RTn-1))
+
+hetR <- c(floor(range(log(valS[,colnames(valS) %in% samples], base = HETbase))[1]), ceiling(range(log(valS[,colnames(valS) %in% samples], base = HETbase))[2]))
+nhet <- length(hetR[1]:hetR[2])
+
+#track the parameter estimates across iterations
 
 RTtrack <- matrix(NA, ncol = RTn, nrow = nanneal)
 MZoffsetrack  <- rep(NA, times = nanneal)
+SDtrack <- matrix(NA, ncol = nhet, nrow = nanneal)
+RT.SDtrack <- rep(NA, times = nanneal)
+RT.coel.SDtrack <- rep(NA, times = nanneal)
+
+#track the likelihood (more accurately collective support) across iterations
+
 RTliktrack <- matrix(NA, ncol = RTn, nrow = nanneal)
 MZliktrack  <- rep(NA, times = nanneal)
+SDliktrack <- matrix(NA, ncol = nhet, nrow = nanneal)
+RT.SDliktrack <- rep(NA, times = nanneal)
+RT.coel.SDliktrack <- rep(NA, times = nanneal)
+
+#parameters from previous iteration
 
 RTcoefsO <- rep(1, times = RTn)
-RTcoefsE <- rep(NA, times = RTn)
 MZcoefO <- 0
+SDcoefO <- rep(1, times = nhet)
+RT.SDcoefO <- 0.1
+RT.coel.SDO <- RT.coel.SD
+
+#sampled parameters to be evalutated
+
+RTcoefsE <- rep(NA, times = RTn)
 MZcoefE <- NA
+SDcoefE <- rep(NA, times = nhet)
+RT.SDcoefE <- NA
+RT.coel.SDE <- NA
+
+#the likelihood from previous iteration 
 
 RTlik  <- rep(NA, times = RTn)
 MZlik <- NA
+peakSDlik <- rep(NA, times = nhet)
+RT.peakSDlik <- NA
+RT.coel.SDlik <- NA
+
+#the likelihood upon changing the evaluation parameter
 
 RTlikE <- rep(NA, times = RTn)
 MZlikE <- NA
-
-HETbase <- 2.5
-hetR <- c(floor(range(log(valS[,colnames(valS) %in% samples], base = 2))[1]), ceiling(range(log(valS[,colnames(valS) %in% samples], base = HETbase))[2]))
-
-nhet <- length(hetR[1]:hetR[2])
-
-SDliktrack <- matrix(NA, ncol = nhet, nrow = nanneal)
-SDtrack <- matrix(NA, ncol = nhet, nrow = nanneal)
-peakSDlik <- rep(NA, times = nhet)
 peakSDlikE <- rep(NA, times = nhet) 
-SDcoefO <- rep(1, times = nhet)
-SDcoefE <- rep(NA, times = nhet)
-
-
-RT.SDliktrack <- rep(NA, times = nanneal)
-RT.SDtrack <- rep(NA, times = nanneal)
-RT.peakSDlik <- NA
 RT.peakSDlikE <- NA
-RT.SDcoefO <- 0.1
-RT.SDcoefE <- NA
+RT.coel.SDlikE <- NA
 
 
-#save(valS, HETbase, RTpos, samples, nanneal, file = "PeakFparams.R")
 
 for(j in 1:nanneal){
 
 #ppm offset - systematic difference between peaks and standards
-if(j == 1){MZcoefE <- MZcoefO; RTcoefsE <- RTcoefsO; SDcoefE <- SDcoefO; RT.SDcoefE <- RT.SDcoefO
+if(j == 1){MZcoefE <- MZcoefO; RTcoefsE <- RTcoefsO; SDcoefE <- SDcoefO; RT.SDcoefE <- RT.SDcoefO; RT.coel.SDE <- RT.coel.SDO
 	
 	}else{
+
 MZcoefE <- rnorm(1, MZcoefO, 2*annealvar[j])
 	
-#RTcoefsE <- (rnorm(n = length(RTcoefsO), mean = RTcoefsO, sd = 0.1*annealvar[j]) + rnorm(n = length(RTcoefsO), mean = 1, sd = 0.1*annealvar[j]))/2
 RTcoefsE <- (rnorm(n = length(RTcoefsO), mean = RTcoefsO, sd = 0.1*annealvar[j]) + rnorm(n = length(RTcoefsO), mean = 1, sd = 0.1*annealvar[j])*annealvar[j])/(annealvar[j]+1)
 
 SDcoefE <- SDcoefO*runif(nhet, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
 
 RT.SDcoefE <- RT.SDcoefO*runif(1, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
+
+RT.coel.SDE <- RT.coel.SDO*runif(1, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
+
 }
 
-#C1-C20 are alternative H, C21 is the null for LRT
 RTcoefsMat <- matrix(data = RTcoefsO, ncol = RTn+1, nrow = RTn)
+diag(RTcoefsMat) <- c(1:20)
 diag(RTcoefsMat) <- RTcoefsE
 
 RTeval <- matrix(data = NA, ncol = RTn+1, nrow = length(RTvals))
 
 for(i in 1:(RTn+1)){
 
-RTpoints <- RTpos*RTcoefsMat[,i]
-RTcoefs <- summary(lm(RTpoints ~ RTpos + I(RTpos^2) + I(RTpos^3)))$coef[,1]
-RTeval[,i] <- RTcoefs[1] + RTcoefs[2]*RTvals + RTcoefs[3]*RTvals^2 + RTcoefs[4]*RTvals^3
+RTpoints <- RTpos*RTcoefsMat[,i] + rnorm(length(RTpos*RTcoefsMat[,i]), mean = 0, sd = 5)
+RTeval[,i] <- predict(smooth.spline(RTpos*RTcoefsMat[,i], RTpoints, df = RTpolyD, cv = TRUE, all.knots=TRUE), RTvals)$y
 
 	}	
 		
@@ -185,18 +217,26 @@ RTeval[,i] <- RTcoefs[1] + RTcoefs[2]*RTvals + RTcoefs[3]*RTvals^2 + RTcoefs[4]*
 SDcoefMat <- matrix(data = log((HETbase^(hetR[1]:hetR[2]))*SDcoefO, base = HETbase), ncol = nhet+1, nrow = nhet)
 diag(SDcoefMat) <- log(HETbase^(hetR[1]:hetR[2])*SDcoefE, base = HETbase)
 
-SDlmMat <- matrix(data = NA, ncol = nhet+1, nrow = 4)
+sd.knot <- NULL
+sd.nk <- NULL
+sd.min <- NULL
+sd.range <- NULL
+sd.coef	<- NULL
 
 for(i in 1:(nhet+1)){
 
 SDpoints <- c(hetR[1]:hetR[2])
-SDlmMat[,i] <- summary(lm(SDcoefMat[,i] ~ SDpoints + I(SDpoints^2) + I(SDpoints^3)))$coef[,1]
-	
-	}	
+#SDlmMat[,i] <- summary(lm(SDcoefMat[,i] ~ SDpoints + I(SDpoints^2) + I(SDpoints^3)))$coef[,1]
+SDspline <- smooth.spline(SDpoints, SDcoefMat[,i]+rnorm(length(SDcoefMat[,1]),0,5), df = HETpolyD, cv = TRUE, all.knots=TRUE)$fit
 
-#evalINT <- seq(hetR[1], hetR[2], by = 0.1)
-#plot(VarlmMat[1,2] + VarlmMat[2,2]*evalINT + VarlmMat[3,2]*evalINT^2 + VarlmMat[4,2]*evalINT^3 ~ evalINT)
-#points(evalINT+1 ~ evalINT, type = "l")
+sd.knot <- cbind(sd.knot, SDspline$knot)
+sd.nk <- c(sd.nk, SDspline$nk)
+sd.min <- c(sd.min, SDspline$min)
+sd.range <- c(sd.range, SDspline$range)
+sd.coef	<- cbind(sd.coef, SDspline$coef)
+}
+
+
 
 
 
@@ -413,6 +453,12 @@ SDliktrack[j,i]  <- peakSDlik[i]}}
 }
 
 save(j, RTtrack, RTliktrack, MZoffsetrack, MZliktrack, SDtrack, SDliktrack, RT.SDtrack, RT.SDliktrack, file = "SpectrumScale.R")
+
+
+
+
+
+
 
 
 

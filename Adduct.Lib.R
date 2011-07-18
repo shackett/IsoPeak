@@ -1,14 +1,30 @@
 ############# Determine likelihood of a set of peaks corresponding to a compouds isotopes given the current evidence from peak size and position (posL) and the observed ratios of isotopes ###############
 
-GauS.w.Adduct <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE, ADDUCT.OUT, RT.UNKNOWN, isoCov){
+GauS.w.Adduct <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE, ADDUCT.OUT, RT.UNKNOWN, USE.pkSD.spline, isoCov, RT.coel.SD, Supthresh, sd.spline.knot, sd.spline.nk, sd.spline.min, sd.spline.range, sd.spline.coef){
 
-print(com)
+#Description of constants
+
+#Supthresh - The support threshold for LIKe above which a possible association between a peak and standard will be evaluated.
+#default = -20 
+
+#isoCov - Only those peak-STD permutations which have peaks corresponding to sum(p) >isoCov of the expected compound for any labeling state will be accepted as validP permutations.  For adducts the sum of expected isotopic variant abundances across the labeling conditions must be greater than isoCov.
+#default = 0.70
+
+#RT.coel.SD - The support for peak-STD permutations - all peaks within a permutation should coelute and have a similar RT.  LIKe is modified by this factor and compared to Supthresh
+#default = 0.1
+
+#Signal.Thresh - Minimum detectable signal - Taken as a function of Threshold - This variable only acts to determine whether combinations of standards should be penalized for the absence of an expected signal above the Signal.Thresh.
+#default = Threshold*2
+
+
+#print(com)
 
 #subset of attributes for a single compound's isotopic variants
 subprob <- probMat[coToiso[,com],]
 posLsub <- posL[,coToiso[,com]]
 
-nfacs <- apply(posLsub, 2, sumthresh, thresh = -20, nvec = npeaks)
+#peaks which are associated with 1+ standards
+nfacs <- apply(posLsub, 2, sumthresh, thresh = Supthresh, nvec = npeaks)
 if(length(unlist(nfacs)) != 0){
 
 stacker <- NULL
@@ -32,7 +48,7 @@ colZ <- stacker[!is.na(stacker)[,1],]
 
 probMatsub <- probMat[coToiso[,com],]
 
-###### require that peaks in the same permutation have matching RT w/ sd = 0.2 min.
+###### require that peaks in the same permutation have matching RT w/ sd = 0.1 min.
 
 RT.weights <- apply(cbind(Nf, Pf), 1, mean)
 
@@ -48,7 +64,7 @@ RTgrid[is.na(RTgrid)] <- 0
 
 permRTs <- apply(RTgrid*matrix(RT.weights, ncol = length(validP[1,]), nrow = length(validP[,1]), byrow = TRUE), 1, sum, na.rm = TRUE)/(ifelse(is.na(validP), 0, 1)%*%RT.weights)
 
-logL.RT <- log(gausD(peaks=RTgrid, expected = matrix(permRTs, ncol = length(validP[1,]), nrow = length(validP[,1])), sdP = matrix(0.1, ncol = length(validP[1,]), nrow = length(validP[,1]))), base = 2) * ifelse(is.na(validP), 0, 1)
+logL.RT <- log(gausD(peaks=RTgrid, expected = matrix(permRTs, ncol = length(validP[1,]), nrow = length(validP[,1])), sdP = matrix(RT.coel.SD, ncol = length(validP[1,]), nrow = length(validP[,1]))), base = 2) * ifelse(is.na(validP), 0, 1)
 logL.RT[is.nan(logL.RT)] <- NA
 logL.RT.perm <- apply(logL.RT, 1, sum, na.rm = TRUE)
 
@@ -73,8 +89,14 @@ colnames(PMAT) <- rep(indies, times = npeakISO)
 PPROB <- matrix(data = unlist(t(as.data.frame(probMatsub[colZ[,2],]))), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(PPROB) <- rep(indies, times = npeakISO)
 
-sdPMAT <- matrix(data = peakSD(unlist(t(peaksizeMat[colZ[,1],])), h = 1, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
+#sdPMAT <- matrix(data = peakSD(unlist(t(peaksizeMat[colZ[,1],])), h, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
+#colnames(sdPMAT) <- rep(indies, times = npeakISO)
+#SDlmfit.spline(unlist(t(peaksizeMat[colZ[,1],])), 
+
+sdPMAT = matrix(SDlmfit.spline(unlist(t(peaksizeMat[colZ[,1],])), sd.spline.knot[,h], sd.spline.nk[,h], sd.spline.min[,h], sd.spline.range[,h], sd.spline.coef[,h], HETBASE, h), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(sdPMAT) <- rep(indies, times = npeakISO)
+
+
 
 aMAT <- matrix(data = unlist(peaksizeMat[colZ[,1],])/peakSD(unlist(peaksizeMat[colZ[,1],]), 1, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(sdPMAT) <- rep(indies, times = npeakISO)
@@ -139,7 +161,7 @@ for(i in 1:nuMiso){absent.used[,colnames(absent.used) == i] <- absent.used.setup
 
 absent.peaksize = matrix(data = Threshold, ncol = nuMiso*nsamples, nrow = nperms)
 
-absent.sd = matrix(data = peakSD(Threshold, h = 1, SDlmMat, HETbase), ncol = nuMiso*nsamples, nrow = nperms)
+absent.sd = matrix(data = peakSD(Threshold, h, SDlmMat, HETbase), ncol = nuMiso*nsamples, nrow = nperms)
 
 absent.prob = matrix(unlist(t(subprob)), ncol = nuMiso*nsamples, nrow = nperms, byrow = TRUE)
 
@@ -291,7 +313,7 @@ for(add in 1:length(adduct.name)){
 
 ind.addL <- addLik[adduct.to.pbya[,add],]
 if(is.matrix(ind.addL) == TRUE){
-add.nfacs <- apply(ind.addL, 1, sumthresh, thresh = -20, nvec = npeaks)}else{add.nfacs <- sumthresh(ind.addL, thresh = -20, nvec = npeaks)}
+add.nfacs <- apply(ind.addL, 1, sumthresh, thresh = Supthresh, nvec = npeaks)}else{add.nfacs <- sumthresh(ind.addL, thresh = Supthresh, nvec = npeaks)}
 	
 if(length(unlist(add.nfacs)) != 0){
 	
@@ -324,7 +346,7 @@ colnames(PMAT) <- rep(indies, times = npeakISO)
 PPROB <- matrix(data = unlist(t(add.probMatsub[add.colZ[,2],])), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(PPROB) <- rep(indies, times = npeakISO)
 
-sdPMAT <- matrix(data = peakSD(unlist(t(peaksizeMat[add.colZ[,1],])), h = 1, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
+sdPMAT <- matrix(data = peakSD(unlist(t(peaksizeMat[add.colZ[,1],])), h, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(sdPMAT) <- rep(indies, times = npeakISO)
 
 aMAT <- matrix(data = unlist(peaksizeMat[add.colZ[,1],])/peakSD(unlist(peaksizeMat[add.colZ[,1],]), 1, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
@@ -562,3 +584,18 @@ transM}
 sum.by.k <- function(i, overall.add.output){
 sum(overall.add.output$value[overall.add.output$parentpkcombos == i])
 }
+
+
+SDlmfit.spline <- function(vec, knot, nk, min, range, coef, HETbase, h){
+
+SDspline <- smooth.spline(SDpoints, SDcoefMat[,i], df = HETpolyD, cv = TRUE, all.knots=TRUE)$fit
+SDspline$knot <- sd.knot[,h]
+SDspline$nk <- sd.nk[h]
+SDspline$min <- sd.min[h]
+SDspline$range <- sd.range[h]
+SDspline$coef <- sd.coef[,h]
+
+predict(SDspline, vec)$y
+
+	}
+

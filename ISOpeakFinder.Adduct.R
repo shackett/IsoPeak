@@ -137,6 +137,7 @@ MZoffsetrack  <- rep(NA, times = nanneal)
 SDtrack <- matrix(NA, ncol = nhet, nrow = nanneal)
 RT.SDtrack <- rep(NA, times = nanneal)
 RT.coel.SDtrack <- rep(NA, times = nanneal)
+MZ.SDtrack <- rep(NA, times = nanneal)
 
 #track the likelihood (more accurately collective support) across iterations
 
@@ -145,6 +146,7 @@ MZliktrack  <- rep(NA, times = nanneal)
 SDliktrack <- matrix(NA, ncol = nhet, nrow = nanneal)
 RT.SDliktrack <- rep(NA, times = nanneal)
 RT.coel.SDliktrack <- rep(NA, times = nanneal)
+MZ.SDliktrack <- rep(NA, times = nanneal)
 
 #parameters from previous iteration
 
@@ -153,6 +155,7 @@ MZcoefO <- 0
 SDcoefO <- rep(1, times = nhet)
 RT.SDcoefO <- 0.1
 RT.coel.SDO <- RT.coel.SD
+MZ.SDO <- 1
 
 #sampled parameters to be evalutated
 
@@ -161,6 +164,7 @@ MZcoefE <- NA
 SDcoefE <- rep(NA, times = nhet)
 RT.SDcoefE <- NA
 RT.coel.SDE <- NA
+MZ.SDE <- NA
 
 #the likelihood from previous iteration 
 
@@ -169,6 +173,7 @@ MZlik <- NA
 peakSDlik <- rep(NA, times = nhet)
 RT.peakSDlik <- NA
 RT.coel.SDlik <- NA
+MZ.SDlik <- NA
 
 #the likelihood upon changing the evaluation parameter
 
@@ -177,13 +182,13 @@ MZlikE <- NA
 peakSDlikE <- rep(NA, times = nhet) 
 RT.peakSDlikE <- NA
 RT.coel.SDlikE <- NA
-
+MZ.SDlikE <- NA
 
 
 for(j in 1:nanneal){
 
 #ppm offset - systematic difference between peaks and standards
-if(j == 1){MZcoefE <- MZcoefO; RTcoefsE <- RTcoefsO; SDcoefE <- SDcoefO; RT.SDcoefE <- RT.SDcoefO; RT.coel.SDE <- RT.coel.SDO
+if(j == 1){MZcoefE <- MZcoefO; RTcoefsE <- RTcoefsO; SDcoefE <- SDcoefO; RT.SDcoefE <- RT.SDcoefO; RT.coel.SDE <- RT.coel.SDO; MZ.SDE <- MZ.SDO
 	
 	}else{
 
@@ -197,17 +202,17 @@ RT.SDcoefE <- RT.SDcoefO*runif(1, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
 
 RT.coel.SDE <- RT.coel.SDO*runif(1, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
 
+MZ.SDE <- MZ.SDO*runif(1, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
 }
 
 RTcoefsMat <- matrix(data = RTcoefsO, ncol = RTn+1, nrow = RTn)
-diag(RTcoefsMat) <- c(1:20)
 diag(RTcoefsMat) <- RTcoefsE
 
 RTeval <- matrix(data = NA, ncol = RTn+1, nrow = length(RTvals))
 
 for(i in 1:(RTn+1)){
 
-RTpoints <- RTpos*RTcoefsMat[,i] + rnorm(length(RTpos*RTcoefsMat[,i]), mean = 0, sd = 5)
+RTpoints <- RTpos*RTcoefsMat[,i]
 RTeval[,i] <- predict(smooth.spline(RTpos*RTcoefsMat[,i], RTpoints, df = RTpolyD, cv = TRUE, all.knots=TRUE), RTvals)$y
 
 	}	
@@ -227,7 +232,7 @@ for(i in 1:(nhet+1)){
 
 SDpoints <- c(hetR[1]:hetR[2])
 #SDlmMat[,i] <- summary(lm(SDcoefMat[,i] ~ SDpoints + I(SDpoints^2) + I(SDpoints^3)))$coef[,1]
-SDspline <- smooth.spline(SDpoints, SDcoefMat[,i]+rnorm(length(SDcoefMat[,1]),0,5), df = HETpolyD, cv = TRUE, all.knots=TRUE)$fit
+SDspline <- smooth.spline(SDpoints, SDcoefMat[,i], df = HETpolyD, cv = TRUE, all.knots=TRUE)$fit
 
 sd.knot <- cbind(sd.knot, SDspline$knot)
 sd.nk <- c(sd.nk, SDspline$nk)
@@ -236,6 +241,11 @@ sd.range <- c(sd.range, SDspline$range)
 sd.coef	<- cbind(sd.coef, SDspline$coef)
 }
 
+#sd.spline.knot = sd.knot
+#sd.spline.nk = sd.nk
+#sd.spline.min = sd.min
+#sd.spline.range = sd.range
+#sd.spline.coef = sd.coef
 
 
 
@@ -259,7 +269,17 @@ posL <- MZe + RTe + SIZe
 
 #LIKeval <- cbind(matrix(MZe + RTe + SIZe, ncol = length(combinedProbs[,1]), nrow = length(peakpos), byrow = FALSE), -50)
 
+
+
 peakLIK <- lapply(c(1:length(compounds)), GaussianLik, coToiso, posL, peaksizeMat, probMat, npeaks, nhet+1, SDlmMat, HETbase)
+
+peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksizeMat, probMat, npeaks, h, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN = FALSE, isoCov, RT.coel.SD, Supthresh, sd.spline.knot, sd.spline.nk, sd.spline.min, sd.spline.range, sd.spline.coef, MZcoefO, MZ.SDO)
+
+
+
+
+#GauS.w.Adduct(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN = FALSE, isoCov, RT.coel.SD, Supthresh, sd.spline.knot, sd.spline.nk, sd.spline.min, sd.spline.range, sd.spline.coef)
+
 
 LIKform <- NULL
 for (znum in 1:length(peakLIK)){

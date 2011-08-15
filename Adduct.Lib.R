@@ -1,6 +1,6 @@
 ############# Determine likelihood of a set of peaks corresponding to a compouds isotopes given the current evidence from peak size and position (posL) and the observed ratios of isotopes ###############
 
-GauS.w.Adduct <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, SDlmMat, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE, ADDUCT.OUT, RT.UNKNOWN, USE.pkSD.spline, isoCov, RT.coel.SD, Supthresh, sd.spline.knot, sd.spline.nk, sd.spline.min, sd.spline.range, sd.spline.coef){
+GauS.w.Adduct <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE, ADDUCT.OUT, RT.UNKNOWN, isoCov, RT.coel.SD, Supthresh, sd.spline.knot, sd.spline.nk, sd.spline.min, sd.spline.range, sd.spline.coef, MZoffset, MZ.SD){
 
 #Description of constants
 
@@ -17,7 +17,7 @@ GauS.w.Adduct <- function(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, S
 #default = Threshold*2
 
 
-#print(com)
+print(com)
 
 #subset of attributes for a single compound's isotopic variants
 subprob <- probMat[coToiso[,com],]
@@ -89,17 +89,21 @@ colnames(PMAT) <- rep(indies, times = npeakISO)
 PPROB <- matrix(data = unlist(t(as.data.frame(probMatsub[colZ[,2],]))), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(PPROB) <- rep(indies, times = npeakISO)
 
+
 #sdPMAT <- matrix(data = peakSD(unlist(t(peaksizeMat[colZ[,1],])), h, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 #colnames(sdPMAT) <- rep(indies, times = npeakISO)
-#SDlmfit.spline(unlist(t(peaksizeMat[colZ[,1],])), 
 
-sdPMAT = matrix(SDlmfit.spline(unlist(t(peaksizeMat[colZ[,1],])), sd.spline.knot[,h], sd.spline.nk[,h], sd.spline.min[,h], sd.spline.range[,h], sd.spline.coef[,h], HETBASE, h), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
+sdPMAT = matrix(SDlmfit.spline(unlist(t(peaksizeMat[colZ[,1],])), sd.spline.knot[,h], sd.spline.nk[,h], sd.spline.min[,h], sd.spline.range[,h], sd.spline.coef[,h], HETbase, h), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(sdPMAT) <- rep(indies, times = npeakISO)
 
+aMAT <- PMAT/sdPMAT
 
 
-aMAT <- matrix(data = unlist(peaksizeMat[colZ[,1],])/peakSD(unlist(peaksizeMat[colZ[,1],]), 1, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
-colnames(sdPMAT) <- rep(indies, times = npeakISO)
+#aMAT <- matrix(data = unlist(peaksizeMat[colZ[,1],])/SDlmfit.spline(unlist(peaksizeMat[colZ[,1],]), sd.spline.knot[,h], sd.spline.nk[,h], sd.spline.min[,h], sd.spline.range[,h], sd.spline.coef[,h], HETBASE, h), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
+
+#aMAT <- matrix(data = unlist(peaksizeMat[colZ[,1],])/peakSD(unlist(peaksizeMat[colZ[,1],]), 1, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
+
+
 
 posLinfo <- NULL
 for(i in 1:length(colZ[,1])){
@@ -161,7 +165,8 @@ for(i in 1:nuMiso){absent.used[,colnames(absent.used) == i] <- absent.used.setup
 
 absent.peaksize = matrix(data = Threshold, ncol = nuMiso*nsamples, nrow = nperms)
 
-absent.sd = matrix(data = peakSD(Threshold, h, SDlmMat, HETbase), ncol = nuMiso*nsamples, nrow = nperms)
+absent.sd = matrix(data = SDlmfit.spline(Threshold, sd.spline.knot[,h], sd.spline.nk[,h], sd.spline.min[,h], sd.spline.range[,h], sd.spline.coef[,h], HETbase, h), ncol = nuMiso*nsamples, nrow = nperms)
+
 
 absent.prob = matrix(unlist(t(subprob)), ncol = nuMiso*nsamples, nrow = nperms, byrow = TRUE)
 
@@ -292,7 +297,7 @@ addPmat <- ifelse(addPmat == "N", 1, 0)*matrix(unlist((matrix(STD$nLabp, ncol = 
 
 # MZ, RT diff for the adducts of the peaks observed in the initial survey
 
-addMZeval <- t(log(dnorm(sapply(addMZmat[,1], masserror, standard = pMZ) + MZoffsetrack[nanneal], mean = 0, sd = 1), base = 2))
+addMZeval <- t(log(dnorm(sapply(addMZmat[,1], masserror, standard = pMZ) + MZoffset, mean = 0, sd = MZ.SD), base = 2))
 
 addRTeval <- log(dnorm(sapply(RT.perm.eval, RTdiff, standard = pRT), mean = 0, sd = 0.1), base = 2)
 
@@ -346,11 +351,11 @@ colnames(PMAT) <- rep(indies, times = npeakISO)
 PPROB <- matrix(data = unlist(t(add.probMatsub[add.colZ[,2],])), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(PPROB) <- rep(indies, times = npeakISO)
 
-sdPMAT <- matrix(data = peakSD(unlist(t(peaksizeMat[add.colZ[,1],])), h, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
+sdPMAT <- matrix(data = SDlmfit.spline(unlist(t(peaksizeMat[add.colZ[,1],])), sd.spline.knot[,h], sd.spline.nk[,h], sd.spline.min[,h], sd.spline.range[,h], sd.spline.coef[,h], HETbase, h), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
 colnames(sdPMAT) <- rep(indies, times = npeakISO)
 
-aMAT <- matrix(data = unlist(peaksizeMat[add.colZ[,1],])/peakSD(unlist(peaksizeMat[add.colZ[,1],]), 1, SDlmMat, HETbase), ncol = nsamples*npeakISO, nrow = nperms, byrow = TRUE)
-colnames(sdPMAT) <- rep(indies, times = npeakISO)
+aMAT <- PMAT/sdPMAT
+
 
 posLinfo <- NULL
 for(i in 1:length(add.colZ[,1])){
@@ -421,7 +426,7 @@ for(i in 1:nuMiso){absent.used[,colnames(absent.used) == i] <- absent.used.setup
 
 absent.peaksize = matrix(data = Threshold, ncol = nuMiso*nsamples, nrow = nperms)
 
-absent.sd = matrix(data = peakSD(Threshold, h = 1, SDlmMat, HETbase), ncol = nuMiso*nsamples, nrow = nperms)
+absent.sd = matrix(data = SDlmfit.spline(Threshold, sd.spline.knot[,h], sd.spline.nk[,h], sd.spline.min[,h], sd.spline.range[,h], sd.spline.coef[,h], HETbase, h), ncol = nuMiso*nsamples, nrow = nperms)
 
 absent.prob = matrix(unlist(t(add.probMatsub)), ncol = nuMiso*nsamples, nrow = nperms, byrow = TRUE)
 

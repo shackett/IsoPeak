@@ -37,7 +37,8 @@ RTpolyD = 4
 HETbase <- 1.8
 #Degree of the fitted polynomial for assessing heteroscedasticity
 HETpolyD = 4
-
+#ppm error (systematic) for mass determination
+MZ.syst.error = 2
 
 ################ Prepare Peak sizes ##################################################
 
@@ -114,13 +115,7 @@ for(i in 1:length(compounds)){
 compoundRT <- c(compoundRT, combinedProbs[combinedProbs$compound %in% compounds[i],]$RT[1])
 }
 
-###### constants #######
-	
-combined <- combinedProbs
-
-
-#### M/Z offset - ~3ppm
-#### Scaling b/w 0.7 and 1.5
+# Determine the retention times and peak sizes that will be permuted to get the respective alignments and sd(peaksize) fxns.
 
 RTvals = valS$medRt
 MZvals = valS$medMz
@@ -187,10 +182,12 @@ MZ.SDlikE <- NA
 
 for(j in 1:nanneal){
 
-#ppm offset - systematic difference between peaks and standards
+#set evaluation parameters equal to the initial parameter estimates for cycle 1
 if(j == 1){MZcoefE <- MZcoefO; RTcoefsE <- RTcoefsO; SDcoefE <- SDcoefO; RT.SDcoefE <- RT.SDcoefO; RT.coel.SDE <- RT.coel.SDO; MZ.SDE <- MZ.SDO
 	
 	}else{
+
+#for cycle j>1, sample evaluation parameters as a fxn of the current paramter values, for a j vs j-1 comparision of parameter fits
 
 MZcoefE <- rnorm(1, MZcoefO, 2*annealvar[j])
 	
@@ -205,6 +202,8 @@ RT.coel.SDE <- RT.coel.SDO*runif(1, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
 MZ.SDE <- MZ.SDO*runif(1, 1-annealvar[j]*(2/5), 1+annealvar[j]*(2/5))
 }
 
+### Determine alignment between centroided samples and standard RTs ###
+
 RTcoefsMat <- matrix(data = RTcoefsO, ncol = RTn+1, nrow = RTn)
 diag(RTcoefsMat) <- RTcoefsE
 
@@ -213,46 +212,27 @@ RTeval <- matrix(data = NA, ncol = RTn+1, nrow = length(RTvals))
 for(i in 1:(RTn+1)){
 
 RTpoints <- RTpos*RTcoefsMat[,i]
-RTeval[,i] <- predict(smooth.spline(RTpos*RTcoefsMat[,i], RTpoints, df = RTpolyD, cv = TRUE, all.knots=TRUE), RTvals)$y
+RTcoefs <- lm(RTpoints ~ polym(RTpos, degree = RTpolyD, raw = TRUE))$coef
+RTeval[,i] <- poly.fit.vec(RTvals, RTcoefs, RTpolyD)
 
-	}	
+}	
 		
 ### Determine SD of a peak given its intensity - Heteroscedasticity ###
 
 SDcoefMat <- matrix(data = log((HETbase^(hetR[1]:hetR[2]))*SDcoefO, base = HETbase), ncol = nhet+1, nrow = nhet)
 diag(SDcoefMat) <- log(HETbase^(hetR[1]:hetR[2])*SDcoefE, base = HETbase)
 
-sd.knot <- NULL
-sd.nk <- NULL
-sd.min <- NULL
-sd.range <- NULL
-sd.coef	<- NULL
+SDlmMat <- matrix(data = NA, ncol = nhet+1, nrow = HETpolyD+1)
 
 for(i in 1:(nhet+1)){
-
+	
 SDpoints <- c(hetR[1]:hetR[2])
-#SDlmMat[,i] <- summary(lm(SDcoefMat[,i] ~ SDpoints + I(SDpoints^2) + I(SDpoints^3)))$coef[,1]
-SDspline <- smooth.spline(SDpoints, SDcoefMat[,i], df = HETpolyD, cv = TRUE, all.knots=TRUE)$fit
-
-sd.knot <- cbind(sd.knot, SDspline$knot)
-sd.nk <- c(sd.nk, SDspline$nk)
-sd.min <- c(sd.min, SDspline$min)
-sd.range <- c(sd.range, SDspline$range)
-sd.coef	<- cbind(sd.coef, SDspline$coef)
-}
-
-#sd.spline.knot = sd.knot
-#sd.spline.nk = sd.nk
-#sd.spline.min = sd.min
-#sd.spline.range = sd.range
-#sd.spline.coef = sd.coef
-
-
-
-
+SDlmMat[,i] <- lm(SDcoefMat[,i] ~ polym(SDpoints, degree = HETpolyD, raw = TRUE))$coef
+	
+	}
 
 	
-###### M/Z eval #######	
+###### M/Z eval #######	Sample MZ systematic error from current estimate with an sd of the instruments precision
 
 pMZ = MZvals
 pRT = RTeval[,RTn+1]
@@ -260,25 +240,15 @@ pRT = RTeval[,RTn+1]
 npeaks  <- length(pMZ)
 nstd <- length(combinedProbs[,1])
 
-#compare against all standards - combinedProbs$mass
-
-MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefE, mean = 0, sd = 2), base = 2)
+MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefE, mean = 0, sd = MZ.SDO), base = 2)
 RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = pRT*RT.SDcoefO), base = 2)
 SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
 posL <- MZe + RTe + SIZe
 
-#LIKeval <- cbind(matrix(MZe + RTe + SIZe, ncol = length(combinedProbs[,1]), nrow = length(peakpos), byrow = FALSE), -50)
 
+peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksizeMat, probMat, npeaks, nhet + 1, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN, isoCov, RT.coel.SD, Supthresh, SDlmMat, MZcoefE, MZ.SDO, HETpolyD)
 
-
-peakLIK <- lapply(c(1:length(compounds)), GaussianLik, coToiso, posL, peaksizeMat, probMat, npeaks, nhet+1, SDlmMat, HETbase)
-
-peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksizeMat, probMat, npeaks, h, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN = FALSE, isoCov, RT.coel.SD, Supthresh, sd.spline.knot, sd.spline.nk, sd.spline.min, sd.spline.range, sd.spline.coef, MZcoefO, MZ.SDO)
-
-
-
-
-#GauS.w.Adduct(com, coToiso, posL, peaksizeMat, probMat, npeaks, h, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN = FALSE, isoCov, RT.coel.SD, Supthresh, sd.spline.knot, sd.spline.nk, sd.spline.min, sd.spline.range, sd.spline.coef)
+#GauS.w.Adduct(203, coToiso, posL, peaksizeMat, probMat, npeaks, nhet + 1, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN, isoCov, RT.coel.SD, Supthresh, SDlmMat, MZcoefE, MZ.SDO, HETpolyD)
 
 
 LIKform <- NULL
@@ -292,16 +262,15 @@ LIKmat[LIKform[z,1],LIKform[z,3]] <- LIKform[z,4]}
 
 MZlikE <- sum(apply(LIKmat, 1, max))/npeaks
 
-##### sd(RT) #######
+##### sd(RT) ####### determine the coefficient that scales the sd of the RT variation (b/w standards and samples) as a linear fxn of RT.
 
-MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefO, mean = 0, sd = 2), base = 2)
+MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = pMZ) + MZcoefO, mean = 0, sd = MZ.SDO), base = 2)
 RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = pRT), mean = 0, sd = pRT*RT.SDcoefE), base = 2)
 SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
 posL <- MZe + RTe + SIZe
 
-#LIKeval <- cbind(matrix(MZe + RTe + SIZe, ncol = length(combinedProbs[,1]), nrow = length(peakpos), byrow = FALSE), -50)
+peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksizeMat, probMat, npeaks, nhet + 1, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN, isoCov, RT.coel.SD, Supthresh, SDlmMat, MZcoefO, MZ.SDO, HETpolyD)
 
-peakLIK <- lapply(c(1:length(compounds)), GaussianLik, coToiso, posL, peaksizeMat, probMat, npeaks, nhet+1, SDlmMat, HETbase)
 
 LIKform <- NULL
 for (znum in 1:length(peakLIK)){
@@ -315,18 +284,16 @@ LIKmat[LIKform[z,1],LIKform[z,3]] <- LIKform[z,4]}
 RT.peakSDlikE <- sum(apply(LIKmat, 1, max))/npeaks
 
 
-##### RT scaling ########
+##### RT scaling ######## Alter points defining the relationship between the standards RT and the RT of the centroided samples, then create a polynomial of degree RTpolyD fitting these points.  This polynomial is then used to transform the list of standards for comparison with the sample peaks.
 
 for(i in 1:RTn){
 	
-MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = MZvals) + MZcoefO, mean = 0, sd = 2), base = 2)
+MZe <- log(dnorm(sapply(combinedProbs$mass, masserror, standard = MZvals) + MZcoefO, mean = 0, sd = MZ.SDO), base = 2)
 RTe <- log(dnorm(sapply(combinedProbs$RT, RTdiff, standard = RTeval[,i]), mean = 0, sd = pRT*RT.SDcoefO), base = 2)
 SIZe <- t(log(probMat %*% t(peaksizeMat), base = 2))
 posL <- MZe + RTe + SIZe
 
-#LIKeval <- cbind(matrix(MZe + RTe + SIZe, ncol = length(combinedProbs[,1]), nrow = length(peakpos), byrow = FALSE), -50)
-
-peakLIK <- lapply(c(1:length(compounds)), GaussianLik, coToiso, posL, peaksizeMat, probMat, npeaks, nhet+1, SDlmMat, HETbase)
+peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksizeMat, probMat, npeaks, nhet + 1, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = FALSE, RT.UNKNOWN, isoCov, RT.coel.SD, Supthresh, SDlmMat, MZcoefO, MZ.SDO, HETpolyD)
 
 LIKform <- NULL
 for (znum in 1:length(peakLIK)){
@@ -342,8 +309,7 @@ LIKmat[LIKform[z,1],LIKform[z,3]] <- LIKform[z,4]}
 RTlikE[i] <- sum(apply(LIKmat, 1, max))/npeaks
 }}
 
-######### Heteroscedasticity determination #############
-
+######### Heteroscedasticity determination ############# Alter points defining the relationship between a peak's size and its sd(variation in sd(peak) == heteroscedasticity).  Fit a polynomial transforming the sparse peak sizes to their sd. 
 
 
 for(i in 1:nhet){

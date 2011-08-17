@@ -10,10 +10,23 @@ factcond <- function(i, peakeval){
 	apply(matrix(peakeval[rownames(peakeval) == i,], nrow = nsamples), 2, sum)
 	}
 	
-peakSD <- function(peaksizeMat, h, SDlmMat, HETbase){
-	sdCoef <- SDlmMat[,h]
-	logSize <- log(peaksizeMat, base = HETbase)
-	HETbase^(sdCoef[1] + sdCoef[2]*logSize + sdCoef[3]*logSize^2 + sdCoef[4]*logSize^3)}
+#compute the standard deviation for each peak's peaksize according to a degree HETpolyD polynomial fitting the optimized data	
+	
+peakSD <- function(peaksizeMat, h, SDlmMat, HETbase, HETpolyD){
+sdCoef <- SDlmMat[,h]	
+logSize <- log(peaksizeMat, base = HETbase)
+
+HETbase^(t(apply(logSize, 1, poly.fit.vec, sdCoef, HETpolyD)))
+	}
+	
+#From the polynomial coefficients, predict the standard deviation of a vector of peaksizes
+	
+poly.fit.vec <- function(vec, poly.fit.coef, degree){
+
+polyM <- matrix(data = vec, nrow = length(vec), ncol = degree)
+
+apply(matrix(poly.fit.coef[2:(degree+1)], ncol = degree, nrow = length(vec), byrow = TRUE)*polyM^matrix(c(1:degree), ncol = degree, nrow = length(vec), byrow = TRUE), 1, sum) + poly.fit.coef[1]
+}	
 	
 harmM <- function(x){length(x)/(sum(1/x))}
 

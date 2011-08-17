@@ -55,19 +55,38 @@ for(i in 1:length(compounds)){
 ##################laod MZ offset, RT scaling and SD scaling from analysis of compounds ###################
 load("SpectrumScale.R")
 
+
+isoCov <- 0.7
+Threshold <- 300
+Signal.Thresh <- 2*Threshold
+Supthresh <- -20 
+RT.coel.SD <- 0.1
+
+### From Paramter evaluation by SA ###
+
+#nanneal - Number of rounds of Metropolis-Hastings sampling 
 nanneal <- j
+#RTn - the number of locally altered polynomials used to assess the RT scaling of the 
+RTn = 20
+#Degree of the fitted polynomial for RT alignment
+RTpolyD = 4
+#HETbase - the base used for forming the locally altered polynomials used to assess the relationship between peak abundance and SD 
+HETbase <- 2.5
+#Degree of the fitted polynomial for assessing heteroscedasticity
+HETpolyD = 3
+
 
 RTvals = valS$medRt
 MZvals = valS$medMz
 
-RTn = 20
+#Align the standards RT with the RT of the centroided samples
+
 RTpos <- range(RTvals)[1] + c(0:(RTn-1))*(diff(range(RTvals))/(RTn-1))
 RTpoints <- RTpos*RTtrack[nanneal,]
-RTcoefs <- summary(lm(RTpoints ~ RTpos + I(RTpos^2) + I(RTpos^3)))$coef[,1]
-RTeval <- RTcoefs[1] + RTcoefs[2]*RTvals + RTcoefs[3]*RTvals^2 + RTcoefs[4]*RTvals^3
-	
+RTcoefs <- lm(RTpoints ~ polym(RTpos, degree = RTpolyD, raw = TRUE))$coef
+RTeval <- poly.fit.vec(RTvals, RTcoefs, RTpolyD)
 
-HETbase <- 2.5
+	
 hetR <- c(floor(range(log(valS[,colnames(valS) %in% samples], base = 2))[1]), ceiling(range(log(valS[,colnames(valS) %in% samples], base = HETbase))[2]))
 
 nhet <- length(hetR[1]:hetR[2])
@@ -75,7 +94,10 @@ nhet <- length(hetR[1]:hetR[2])
 SDcoefeval <- log(HETbase^(hetR[1]:hetR[2])*SDtrack[nanneal,], base = HETbase)
 
 SDpoints <- c(hetR[1]:hetR[2])
-SDlmMat <- matrix(summary(lm(SDcoefeval ~ SDpoints + I(SDpoints^2) + I(SDpoints^3)))$coef[,1])
+SDlmMat <- matrix(data = NA, ncol = 1, nrow = HETpolyD + 1)
+SDlmMat[,1] <- lm(SDcoefeval ~ polym(SDpoints, degree = HETpolyD, raw = TRUE))$coef
+
+
 
 
 #import adduct list from ISOsetup.R
@@ -91,7 +113,6 @@ combinedAdds <- combinedAdds[-1,]
 #load("KEGG/KEGGcompounds.R")
 load("KEGG/KEGGcombo.R")
 
-#
 
 
 ##############
@@ -134,5 +155,7 @@ peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksize
 
 
 
+GauS.w.Adduct(com, coToiso, posL, peaksizeMat, probMat, npeaks, h = 1, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = TRUE, RT.UNKNOWN, isoCov, RT.coel.SD, Supthresh, SDlmMat, MZoffset = 0, MZ.SD = 1)
 
+peakLIK <- lapply(c(1:length(compounds)), GauS.w.Adduct, coToiso, posL, peaksizeMat, probMat, npeaks, h = 1, HETbase, pMZ, pRT, combinedProbs, combinedAdds, ADDUCT.USE = TRUE, ADDUCT.OUT = TRUE, RT.UNKNOWN, isoCov, RT.coel.SD, Supthresh, SDlmMat, MZoffset = 0, MZ.SD = 1)
 
